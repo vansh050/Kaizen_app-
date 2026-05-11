@@ -94,6 +94,18 @@ src/debug/
 src/arfs/
 src/magnus/
 
+# Android build-flavor source dirs (generated, not hand-authored)
+android/app/src/arfs/
+android/app/src/debug/
+android/app/src/magnus/
+
+# React Native link-assets output (generated from node_modules at build time)
+android/app/src/main/res/drawable-*/node_modules_reactnavigation_*
+android/link-assets-manifest.json
+
+# Metro bundler output (generated)
+android/app/src/main/assets/
+
 # Logs and crash dumps
 *.log
 hs_err_pid*.log
