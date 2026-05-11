@@ -1,0 +1,106 @@
+# OSX
+.DS_Store
+
+# Xcode
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+**/.xcode.env.local
+
+# Android / IntelliJ
+build/
+.idea/
+.gradle/
+local.properties
+*.iml
+*.hprof
+.cxx/
+android/.gradle/
+android/build/
+android/app/build/
+android/app/.cxx/
+android/app/release/
+android/app/debug/
+android/app/src/main/assets/index.android.bundle
+android/app/src/main/res/drawable-mdpi/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+!.env.broker.example
+android/app/google-services.json
+ios/GoogleService-Info.plist
+*.keystore
+!debug.keystore
+!android/app/debug.keystore
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+
+# Fastlane
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots
+**/fastlane/test_output
+
+# React Native / Metro output
+*.bundle
+*.jsbundle
+test.bundle
+.metro-cache/
+.metro-health-check*
+.watchmanconfig
+
+# Ruby / CocoaPods
+**/Pods/
+/vendor/bundle/
+
+# Testing
+/coverage
+
+# Yarn
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# Accidental native-source copy at repo root.
+# Real Android sources live under android/app/src/.
+src/main/
+src/debug/
+src/arfs/
+src/magnus/
+
+# Logs and crash dumps
+*.log
+hs_err_pid*.log
+replay_pid*.log
+
+# Local scratch files seen in this workspace
+AlphaPro
+Get
+Run
+react-native
