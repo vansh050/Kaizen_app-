@@ -10,15 +10,15 @@ PODS:
   - boost (1.84.0)
   - BVLinearGradient (2.8.3):
     - React-Core
-  - CashfreeAnalyticsSDK (2.2.0):
-    - CFNetworkSDK (= 2.2.0)
-  - CashfreePG (2.2.4):
-    - CashfreePGUISDK (= 2.2.4)
-  - CashfreePGCoreSDK (2.2.4):
-    - CashfreeAnalyticsSDK (= 2.2.0)
-  - CashfreePGUISDK (2.2.4):
-    - CashfreePGCoreSDK (= 2.2.4)
-  - CFNetworkSDK (2.2.0)
+  - CashfreeAnalyticsSDK (2.3.3):
+    - CFNetworkSDK (= 2.3.3)
+  - CashfreePG (2.3.7):
+    - CashfreePGUISDK (= 2.3.7)
+  - CashfreePGCoreSDK (2.3.7):
+    - CashfreeAnalyticsSDK (= 2.3.3)
+  - CashfreePGUISDK (2.3.7):
+    - CashfreePGCoreSDK (= 2.3.7)
+  - CFNetworkSDK (2.3.3)
   - DoubleConversion (1.1.6)
   - fast_float (6.1.4)
   - FBLazyVector (0.78.3)
@@ -195,7 +195,7 @@ PODS:
   - nanopb/decode (2.30910.0)
   - nanopb/encode (2.30910.0)
   - PromisesObjC (2.4.0)
-  - razorpay-core-pod (1.0.4)
+  - razorpay-core-pod (1.0.6)
   - razorpay-pod (1.5.0):
     - razorpay-core-pod
   - RCT-Folly (2024.11.18.00):
@@ -1449,8 +1449,8 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - Yoga
-  - react-native-cashfree-pg-sdk (2.2.5):
-    - CashfreePG (= 2.2.4)
+  - react-native-cashfree-pg-sdk (2.3.2):
+    - CashfreePG (= 2.3.7)
     - React-Core
   - react-native-config (1.6.1):
     - react-native-config/App (= 1.6.1)
@@ -1499,7 +1499,7 @@ PODS:
     - React-Core
   - react-native-version-check (3.5.0):
     - React-Core
-  - react-native-webview (13.13.0):
+  - react-native-webview (13.16.1):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -1808,12 +1808,14 @@ PODS:
     - React-perflogger (= 0.78.3)
     - React-utils (= 0.78.3)
   - RecaptchaInterop (100.0.0)
-  - RNAppleAuthentication (2.5.0):
+  - RNAppleAuthentication (2.5.1):
     - React-Core
   - RNCAsyncStorage (1.24.0):
     - React-Core
   - RNCCheckbox (0.5.20):
     - BEMCheckBox (~> 1.4)
+    - React-Core
+  - RNCClipboard (1.16.3):
     - React-Core
   - RNCMaskedView (0.3.2):
     - DoubleConversion
@@ -1838,7 +1840,7 @@ PODS:
     - Yoga
   - RNCPicker (2.11.4):
     - React-Core
-  - RNDateTimePicker (8.5.1):
+  - RNDateTimePicker (8.6.0):
     - React-Core
   - RNDeviceInfo (14.1.1):
     - React-Core
@@ -1884,16 +1886,16 @@ PODS:
     - React-Core
   - RNIap (13.0.4):
     - React-Core
-  - RNInAppBrowser (3.7.0):
+  - RNInAppBrowser (3.7.1):
     - React-Core
-  - RNLocalize (3.6.1):
+  - RNLocalize (3.7.0):
     - React-Core
   - RNNotifee (9.1.8):
     - React-Core
     - RNNotifee/NotifeeCore (= 9.1.8)
   - RNNotifee/NotifeeCore (9.1.8):
     - React-Core
-  - RNPermissions (5.4.4):
+  - RNPermissions (5.5.1):
     - React-Core
   - RNReanimated (3.19.5):
     - DoubleConversion
@@ -2038,7 +2040,7 @@ PODS:
     - Yoga
   - RNSha256 (1.4.10):
     - React-Core
-  - RNShare (12.2.1):
+  - RNShare (12.3.1):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -2059,7 +2061,7 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - Yoga
-  - RNSVG (15.15.1):
+  - RNSVG (15.15.5):
     - React-Core
   - RNVectorIcons (10.3.0):
     - DoubleConversion
@@ -2178,6 +2180,7 @@ DEPENDENCIES:
   - "RNAppleAuthentication (from `../node_modules/@invertase/react-native-apple-authentication`)"
   - "RNCAsyncStorage (from `../node_modules/@react-native-async-storage/async-storage`)"
   - "RNCCheckbox (from `../node_modules/@react-native-community/checkbox`)"
+  - "RNCClipboard (from `../node_modules/@react-native-clipboard/clipboard`)"
   - "RNCMaskedView (from `../node_modules/@react-native-masked-view/masked-view`)"
   - "RNCPicker (from `../node_modules/@react-native-picker/picker`)"
   - "RNDateTimePicker (from `../node_modules/@react-native-community/datetimepicker`)"
@@ -2408,6 +2411,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/@react-native-async-storage/async-storage"
   RNCCheckbox:
     :path: "../node_modules/@react-native-community/checkbox"
+  RNCClipboard:
+    :path: "../node_modules/@react-native-clipboard/clipboard"
   RNCMaskedView:
     :path: "../node_modules/@react-native-masked-view/masked-view"
   RNCPicker:
@@ -2461,11 +2466,11 @@ SPEC CHECKSUMS:
   BEMCheckBox: 5ba6e37ade3d3657b36caecc35c8b75c6c2b1a4e
   boost: 7e761d76ca2ce687f7cc98e698152abd03a18f90
   BVLinearGradient: cb006ba232a1f3e4f341bb62c42d1098c284da70
-  CashfreeAnalyticsSDK: ae25b71a54607c920d519103d154d9727ca2c15a
-  CashfreePG: 6554c215b8eabc9fa13e59c847262b8ba6f29ff6
-  CashfreePGCoreSDK: 133e1ba5aeb8a89bf2188eb3312c88fcad084c75
-  CashfreePGUISDK: 5e943fcca20c45b66c9837bbb87ebbfb75c013a5
-  CFNetworkSDK: 4e431b55f607544f5ca45bc1a36a13e602f51841
+  CashfreeAnalyticsSDK: 11f37b2323be07bf07948bd6046b7c19e947ae07
+  CashfreePG: 88c1cdaa0ab8decb1c2e02263cca37eda9f30c59
+  CashfreePGCoreSDK: 0895818f75ea22e347e715a285cf241fe01f4349
+  CashfreePGUISDK: 2e4a3be02dbaf0af48520c573eb08585491b5545
+  CFNetworkSDK: 6a6261de10185efd4d2957583f0cbad395999cac
   DoubleConversion: cb417026b2400c8f53ae97020b2be961b59470cb
   fast_float: 06eeec4fe712a76acc9376682e4808b05ce978b6
   FBLazyVector: e053802577a711add20e45bbbf5dd1180b6ca62e
@@ -2492,7 +2497,7 @@ SPEC CHECKSUMS:
   lottie-react-native: 0fdfbaa934fc6d3acbffbac5fb4d73d48e37fdf5
   nanopb: 438bc412db1928dac798aa6fd75726007be04262
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
-  razorpay-core-pod: a5ee92704a114e9468436dcba9d9b6222f6d9899
+  razorpay-core-pod: 6da5fb4ed280279d665507fdb50e213d793a5fe2
   razorpay-pod: f634f1b8397eb54d547f25d35291f679545ddf17
   RCT-Folly: e78785aa9ba2ed998ea4151e314036f6c49e6d82
   RCTDeprecation: cf39863b43871c2031050605fb884019b6193910
@@ -2525,7 +2530,7 @@ SPEC CHECKSUMS:
   React-Mapbuffer: b0debf83f1eecbb29ae07e0b22ca2483f1550685
   React-microtasksnativemodule: b902bf1dc40aa577bb8e00e2ec897853fbc82ca4
   react-native-blur: b06c3fe88680beac622d8d13b8c36ec15c50383b
-  react-native-cashfree-pg-sdk: 1641b1e1fa40daaa325accb8c615224075e1704b
+  react-native-cashfree-pg-sdk: 163291ea095e796c45dc972839caab97a31af697
   react-native-config: 8ebcf99c9ed605aea6ecea5ecb80416c63f0fbdc
   react-native-date-picker: 2eca217a8fb09c517f5bb6b23978718c6cec59ec
   react-native-floating-label-input: 825326adbe737cf87b541cff2d06efa137886fd8
@@ -2538,7 +2543,7 @@ SPEC CHECKSUMS:
   react-native-restart: 0bc732f4461709022a742bb29bcccf6bbc5b4863
   react-native-safe-area-context: 6c8805194166a9d6b3e53ba69ca76756c9bfb052
   react-native-version-check: 842a3b0e7221798cbe8c6abaf24aab3ed0b485ce
-  react-native-webview: 849d93fd5c1be7a7862ccf9d6cf2fbf6970d4e2b
+  react-native-webview: 1af76726e76eb4a02e4225e0ecc8725eda03a65b
   React-NativeModulesApple: c8bb2bc56d39bd122c56ef58a55c3f34d53f1585
   React-perflogger: d06f0fd0727356651a5535f6d717130187aeb667
   React-performancetimeline: 7afc2307ffc4047cef95eb711ea39a12fd90d533
@@ -2568,12 +2573,13 @@ SPEC CHECKSUMS:
   ReactCodegen: 208bce6d59af415a05645e698c05099c712b7c9e
   ReactCommon: f8ba2c1fc9562f77a16d44fb96fad96aa3eac847
   RecaptchaInterop: 7d1a4a01a6b2cb1610a47ef3f85f0c411434cb21
-  RNAppleAuthentication: 9027af8aa92b4719ef1b6030a8e954d37079473a
+  RNAppleAuthentication: a89c9804592b38ed4ab11f0aee68d05ba12ad432
   RNCAsyncStorage: b6410dead2732b5c72a7fdb1ecb5651bbcf4674b
   RNCCheckbox: 33b44487ca8008394ce658cc32b26eab04f426ef
+  RNCClipboard: f6679d470d0da2bce2a37b0af7b9e0bf369ecda5
   RNCMaskedView: 2a1adda250c1b71134fa097ae7fc56e0b41ca01e
   RNCPicker: 7de564dce1f90b53e386a24001aafc3578233dfe
-  RNDateTimePicker: 1644c91bdbee110de801cf41c7c660c00366e174
+  RNDateTimePicker: 39a7b97196b9daaa1d52d71fb835da924a9c5776
   RNDeviceInfo: bcce8752b5043a623fe3c26789679b473f705d3c
   RNFBApp: 0e66b9f844efdf2ac3fa2b30e64c9db41a263b3d
   RNFBAuth: a33d15faa7f061c350c0744ee9ee2897ee102cf3
@@ -2583,15 +2589,15 @@ SPEC CHECKSUMS:
   RNGestureHandler: 98da96d2a135a24387a6af4ae14478909d5fabd7
   RNGoogleSignin: 629df9e1ea81e2a17c4db5aae0e8a98309e4723a
   RNIap: 868250beda0ced499d39f53eaa88e8c2951cfe27
-  RNInAppBrowser: 6d3eb68d471b9834335c664704719b8be1bfdb20
-  RNLocalize: 0a9ffe84f0d25cf2fb0abacd4d7491a06e78ced2
+  RNInAppBrowser: 904d24dc75e8e6c6c98a3160329192608946f9df
+  RNLocalize: 5b24342fb7288242c2215756412d8dcb8dadf31e
   RNNotifee: 5e3b271e8ea7456a36eec994085543c9adca9168
-  RNPermissions: 15f0316617e4a61c6f9b64174081837e674075ee
+  RNPermissions: dd8f5d9b12a0927a5dc1670d3ec1f66737c72a19
   RNReanimated: 5c4fb526815ad92eba1f77b23b9601c503eb7be7
   RNScreens: cfb34cc4609bb92bd4fad6583be815075705a912
   RNSha256: 4d35f112e967f58273d625a19376f4eafc72bd5c
-  RNShare: 5c1d4978f57eb9a6b647a103459830d17f049371
-  RNSVG: dc0d173e7dbb006a8082d465e5eab5b6c1ea9392
+  RNShare: 10f79021ba4a789dd94d3a07f06a18ba4b9c0ccb
+  RNSVG: 1c00ce6f52f4746ee95d3e70216ce93ac23f319e
   RNVectorIcons: 0e379edcd28e94c210760bd2badbecd97f8ac08a
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   Yoga: eca8dd841b7cd47d82d66be58af8e3aeb819012f
