@@ -1,6 +1,5 @@
 const path = require('path');
 const { getDefaultConfig, mergeConfig } = require("@react-native/metro-config");
-const exclusionList = require('metro-config/src/defaults/exclusionList');
 
 const defaultConfig = getDefaultConfig(__dirname);
 const { resolver: { sourceExts, assetExts } } = defaultConfig;
@@ -50,12 +49,12 @@ const config = {
       // those resolve to the host app's @babel/runtime install.
       '@babel/runtime': path.resolve(__dirname, 'node_modules/@babel/runtime'),
     },
-    blockList: exclusionList([
+    blockList: [
       /android\/app\/build\/.*/,
       /android\/build\/.*/,
       /ios\/Pods\/.*/,
       /src\/main\/.*/,
-    ]),
+    ],
   },
   watchFolders: [SDK_PATH],
 };
