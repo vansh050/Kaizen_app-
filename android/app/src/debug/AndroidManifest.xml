@@ -1,0 +1,11 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        tools:targetApi="28"
+        tools:ignore="GoogleAppIndexingWarning"
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/react_native_config"
+        tools:replace="android:usesCleartextTraffic,android:networkSecurityConfig">
+    </application>
+</manifest>
