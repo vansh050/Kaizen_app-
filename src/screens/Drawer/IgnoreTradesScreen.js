@@ -156,17 +156,24 @@ const IgnoreTradesScreen = () => {
       return Key;
     }
   };
-  const getUserDeatils = () => {
+  // Build a fresh auth header set on each call. The `aq-encrypted-key` JWT has
+  // a short expiry validated against the client clock; minting per call (not
+  // once at mount) avoids a stale-token 401. Ported from web parity
+  // commit 5660392c (fix(auth): tolerate client clock skew on aq-encrypted-key
+  // token; retry getUserDetails on 401).
+  const buildAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    'X-Advisor-Subdomain': getAdvisorSubdomain(),
+    'aq-encrypted-key': generateToken(
+      Config.REACT_APP_AQ_KEYS,
+      Config.REACT_APP_AQ_SECRET,
+    ),
+  });
+
+  const getUserDeatils = (retry = true) => {
     axios
       .get(`${server.server.baseUrl}api/user/getUser/${userEmail}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Advisor-Subdomain': getAdvisorSubdomain(),
-          'aq-encrypted-key': generateToken(
-            Config.REACT_APP_AQ_KEYS,
-            Config.REACT_APP_AQ_SECRET,
-          ),
-        },
+        headers: buildAuthHeaders(),
       })
       .then(res => {
         setUserDetails(res.data.User);
@@ -174,7 +181,15 @@ const IgnoreTradesScreen = () => {
 
         setBrokerStatus(res.data.connect_broker_status);
       })
-      .catch(err => console.log(err));
+      .catch(err => {
+        // 401 is almost always a stale / clock-skewed short-lived auth token.
+        // Retry once with a freshly minted token before surfacing the error.
+        if (retry && err?.response?.status === 401) {
+          getUserDeatils(false);
+          return;
+        }
+        console.log(err);
+      });
   };
   // zerodha start
   const [zerodhaAccessToken, setZerodhaAccessToken] = useState(null);
@@ -737,11 +752,19 @@ const IgnoreTradesScreen = () => {
       return;
     }
 
+    // Tag `variant` on every per-trade object BEFORE AsyncStorage write.
+    // checkZerodhaStatus (L855) rehydrates from this storage and forwards
+    // to /api/zerodha/publisher/record-orders, so variant must be present
+    // here to land in the persisted record. See docs/APP_ARCHITECTURE.md
+    // § 4.5.2 Trade variant field.
+    const zerodhaVariant = computeTradeVariant(allowAfterHoursOrders);
+    const zerodhaTrades = (stockDetails || []).map(s => ({ ...s, variant: zerodhaVariant }));
+
     try {
-      // Store stockDetails in AsyncStorage (similar to localStorage)
+      // Store variant-tagged stockDetails in AsyncStorage
       await AsyncStorage.setItem(
         'stockDetailsZerodhaOrder',
-        JSON.stringify(stockDetails),
+        JSON.stringify(zerodhaTrades),
       );
 
       const basket = stockDetails.map(stock => {

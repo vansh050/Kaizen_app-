@@ -966,9 +966,17 @@ const UserStrategySubscribeModal = ({
   };
   const zerodhaApiKey = configData?.config?.REACT_APP_ZERODHA_API_KEY;
   const handleZerodhaRedirect = async () => {
-    console.log('THos caalled', stockDetails);
+    // Tag `variant` once at the top of the function. Used for the
+    // `update-reco-with-zerodha-model-pf` call below AND injected into the
+    // `filteredStockDetails` shape written to AsyncStorage — without this
+    // tag, the field is dropped by the explicit field-by-field mapping at
+    // the .then() handler. See docs/APP_ARCHITECTURE.md § 4.5.2 Trade
+    // variant field.
+    const zerodhaVariant = computeTradeVariant(allowAfterHoursOrders);
+    const zerodhaTrades = (stockDetails || []).map(s => ({ ...s, variant: zerodhaVariant }));
+    console.log('THos caalled', zerodhaTrades);
     try {
-      console.log('This is called', stockDetails);
+      console.log('This is called', zerodhaTrades);
       await AsyncStorage.removeItem('stockDetailsZerodhaOrder');
       await AsyncStorage.removeItem('zerodhaAdditionalPayload');
       AsyncStorage.setItem(
@@ -1047,7 +1055,7 @@ const UserStrategySubscribeModal = ({
             },
           },
           {
-            stockDetails: stockDetails,
+            stockDetails: zerodhaTrades,
             leaving_datetime: currentISTDateTime,
             email: userEmail,
             trade_given_by: configData?.config?.REACT_APP_ADVISOR_SPECIFIC_TAG || 'AlphaQuark',
@@ -1069,6 +1077,11 @@ const UserStrategySubscribeModal = ({
             priority: detail.Priority,
             tradeId: detail.tradeId,
             user_broker: 'Zerodha', // Manually adding this field
+            // Preserve variant through the field-by-field mapping. The
+            // backend may or may not echo it on the response (depending on
+            // whether `update-reco-with-zerodha-model-pf` persists it); if
+            // it doesn't, fall back to the submit-time computation.
+            variant: detail.variant || zerodhaVariant,
           }));
 
           setLoading(false);

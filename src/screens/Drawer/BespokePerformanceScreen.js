@@ -25,6 +25,7 @@ import { convertResponse } from '../../utils/tradeUtils';
 import { useGstConfig } from '../../context/GstConfigContext';
 import { getAdvisorSubdomain } from '../../utils/variantHelper';
 import { useComponent } from '../../design/useDesign';
+import { getSubscriptionStatusString } from '../../utils/subscriptionStatus';
 
 const screenWidth = Dimensions.get('window').width;
 const ScreenHeight = Dimensions.get('window').height;
@@ -441,33 +442,14 @@ const BespokePerformanceScreen = ({ route }) => {
     };
     useEffect(() => { getAllSubscriptionData(); }, []);
 
-    const ACCEPTABLE_DATE_FORMATS = ['D MMM YYYY, HH:mm:ss', 'YYYY-MM-DDTHH:mm:ss.SSSZ'];
-
-    const getSubscriptionStatus = (planName, subscriptions) => {
-        const normalizeGroupName = name => { if (!name) return ''; return name.toLowerCase().replace(/%20/g, ' ').replace(/\s+/g, '_').trim(); };
-        if (!subscriptions || subscriptions.length === 0) return 'none';
-        const matchingPlanSubs = subscriptions.filter(sub => {
-            const nSub = normalizeGroupName(sub?.plan);
-            const nPlan = normalizeGroupName(planName);
-            return nSub === nPlan || nSub.includes(nPlan) || nPlan.includes(nSub);
-        });
-        if (matchingPlanSubs.length === 0) return 'none';
-        const activeSubscriptions = matchingPlanSubs.filter(sub => sub?.status !== 'deleted');
-        if (activeSubscriptions.length === 0) return 'none';
-        const neverExpiringSubscriptions = activeSubscriptions.filter(sub => sub.expiry === null);
-        if (neverExpiringSubscriptions.length > 0) return 'active';
-        const validSubscriptions = activeSubscriptions.filter(sub => sub.expiry ? moment(sub.expiry, ACCEPTABLE_DATE_FORMATS, true).isValid() : false);
-        if (validSubscriptions.length === 0) return 'none';
-        const latestSub = validSubscriptions.sort((a, b) => moment(b.expiry, ACCEPTABLE_DATE_FORMATS) - moment(a.expiry, ACCEPTABLE_DATE_FORMATS))[0];
-        const expiryDate = moment(latestSub?.expiry, ACCEPTABLE_DATE_FORMATS);
-        const today = moment();
-        const daysLeft = expiryDate.diff(today, 'days');
-        if (daysLeft < 0) return 'expired';
-        if (daysLeft <= 7) return 'renew';
-        return 'active';
-    };
-
-    const subscriptionStatus = getSubscriptionStatus(modelName, subscriptionData?.subscriptions);
+    // Shared util — consults subscriptionData.groups before subscriptions
+    // (web parity, prod-alphaquark-github/src/Home/PricingSection/IPOCard.js
+    // hasActiveSubscription). Pass the FULL subscriptionData object so
+    // the groups branch can fire; the previous inline copy only looked at
+    // `.subscriptions` and produced false-positives for plans the user
+    // never subscribed to (2026-06-09 MySubscriptionsScreen bug, same
+    // shape here).
+    const subscriptionStatus = getSubscriptionStatusString(modelName, subscriptionData);
     const isActive = subscriptionStatus === 'active' || subscriptionStatus === 'renew';
 
     const Presentation = useComponent('screens.BespokePerformanceScreen');

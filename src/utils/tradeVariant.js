@@ -45,9 +45,17 @@ export function computeTradeVariant(allowAfterHoursOrders) {
 
 /**
  * Match a result row back to its outgoing trade record so we can recover
- * `variant` on the rebalance/MP lane (where ccxt-india doesn't echo the
- * field). Three-tier fallback:
- *   1. result.variant (if Node bespoke lane echoed it)
+ * `variant` on the rebalance/MP lane.
+ *
+ * As of 2026-05-11 ccxt-india's /rebalance/process-trade echoes `variant`
+ * on each result row (see `ccxt-india/rebalancing/rebalancing.py:1191-`).
+ * The helper is now defensive — tier 1 (response.variant) is the primary
+ * source. Tiers 2-3 cover (a) older ccxt-india deploys that pre-date the
+ * echo fix, (b) cached responses, (c) the bespoke rebalance lane until
+ * RebalanceModal threads outgoingTrades through.
+ *
+ * Three-tier resolution:
+ *   1. result.variant — primary (server-echoed since 2026-05-11)
  *   2. matching outgoing trade's `variant` by symbol+tradeId+transactionType
  *   3. 'REGULAR' default
  *

@@ -65,6 +65,10 @@ const RebalanceAdvices = React.memo(({userEmail, orderscreen, type}) => {
     userDetails,
     getUserDeatils,
     configData,
+    modelPortfolioRepairTrades,
+    getModelPortfolioRepairTrades,
+    markSkipRepairForModelId,
+    shouldSkipRepairForModelId,
   } = useTrade();
 
   const clientCode = userDetails && userDetails.clientCode;
@@ -152,46 +156,20 @@ const RebalanceAdvices = React.memo(({userEmail, orderscreen, type}) => {
     isMixed: false,
   });
 
-  const [modelPortfolioRepairTrades, setModelPortfolioRepairTrades] = useState(
-    [],
-  );
+  // modelPortfolioRepairTrades now sourced from TradeContext (auto-fetched
+  // alongside getModelPortfolioStrategyDetails). Local fetch / state removed
+  // 2026-05-11. The `getRebalanceRepair` shim below preserves the prop
+  // contract that downstream callers (RebalanceModal, DummyBrokerHoldingConfirmation)
+  // still use to refresh after a successful execution. See
+  // docs/MODEL_PORTFOLIO_ARCHITECTURE.md § 6g.
   const getRebalanceRepair = () => {
-    let repairData = JSON.stringify({
-      modelName: modelNames,
-      advisor: configData?.config?.REACT_APP_HEADER_NAME,
-      userEmail: userEmail,
-      userBroker: broker,
-    });
-    let config2 = {
-      method: 'post',
-      url: `${server.ccxtServer.baseUrl}rebalance/get-repair`,
-
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME,
-        'aq-encrypted-key': generateToken(
-          Config.REACT_APP_AQ_KEYS,
-          Config.REACT_APP_AQ_SECRET,
-        ),
-      },
-
-      data: repairData,
-    };
-    axios
-      .request(config2)
-      .then(response => {
-        setModelPortfolioRepairTrades(response.data.models);
-      })
-      .catch(error => {
-        console.log(error);
-      });
-  };
-  // console.log("Broker value being sent:", broker);
-  useEffect(() => {
-    if (modelPortfolioStrategy.length !== 0) {
-      getRebalanceRepair();
+    if (typeof getModelPortfolioRepairTrades === 'function') {
+      getModelPortfolioRepairTrades(modelPortfolioStrategy).catch(() => {});
     }
-  }, [modelPortfolioStrategy]);
+  };
+  // No-op setter — context owns the state now. Callsites that still call
+  // `setModelPortfolioRepairTrades(...)` (none today) would write to a void.
+  const setModelPortfolioRepairTrades = () => {};
 
   const zerodhaApiKey = configData?.config?.REACT_APP_ZERODHA_API_KEY;
   // zerodha start

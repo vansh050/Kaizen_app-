@@ -78,7 +78,7 @@ const SDK_TEST_USER_REF = Config?.REACT_APP_SDK_TEST_USER_REF || '';
 function getTenantSubdomainForMint() {
   // safeConfig flattens both react-native-config and the static
   // APP_VARIANTS table; getAdvisorSubdomain reads APP_VARIANT then
-  // looks up the variant's subdomain. Falls back to 'kaizenalpha' →
+  // looks up the variant's subdomain. Falls back to 'alphaquark' →
   // 'prod' if APP_VARIANT is unset.
   return getAdvisorSubdomain() || '';
 }

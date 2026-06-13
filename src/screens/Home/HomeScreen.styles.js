@@ -10,7 +10,7 @@ import { StyleSheet, Dimensions } from 'react-native';
 import Config from '../../utils/safeConfig';
 
 const { width: screenWidth } = Dimensions.get('window');
-const selectedVariant = Config?.APP_VARIANT || 'kaizenalpha';
+const selectedVariant = Config?.APP_VARIANT || 'rgxresearch';
 
 export default StyleSheet.create({
     container: {

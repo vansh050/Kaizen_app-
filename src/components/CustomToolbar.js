@@ -60,8 +60,8 @@ const {width, height} = Dimensions.get('window');
 const CustomToolbar = React.memo(({count, currentRoute}) => {
   const {configData, configLoading} = useTrade();
   const config = useConfig();
-  const selectedVariant = Config?.APP_VARIANT || 'kaizenalpha';
-  const validVariant = APP_VARIANTS[selectedVariant] ? selectedVariant : 'kaizenalpha';
+  const selectedVariant = Config?.APP_VARIANT || 'rgxresearch';
+  const validVariant = APP_VARIANTS[selectedVariant] ? selectedVariant : 'rgxresearch';
   const fallbackConfig = APP_VARIANTS[validVariant] || {};
 
   // Get toolbarlogo from config (S3) or fallback

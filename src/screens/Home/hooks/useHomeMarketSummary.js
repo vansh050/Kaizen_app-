@@ -77,6 +77,15 @@ const formatChange = (change, prevClose) => {
     if (!Number.isFinite(change) || !Number.isFinite(prevClose) || prevClose === 0) {
         return '';
     }
+    // Suppress a 0.00 change chip. When prev_close is unavailable (network
+    // blip → opening-mode fallback) or a stale tick momentarily matches the
+    // base, the change rounds to 0.00 and "▲ 0.00 (0.00%)" looks broken on
+    // every index at once. Render the value alone instead. A genuine change
+    // (after-hours = today's close vs yesterday's) is always non-zero and
+    // still shows normally.
+    if (Math.abs(change).toFixed(2) === '0.00') {
+        return '';
+    }
     const arrow = change >= 0 ? '▲' : '▼';
     const pct = Math.abs((change / prevClose) * 100).toFixed(2);
     return `${arrow} ${Math.abs(change).toFixed(2)} (${pct}%)`;
@@ -121,40 +130,35 @@ export default function useHomeMarketSummary() {
     const [comparisonType, setComparisonType] = useState('prevClose');
     const [openingPrices, setOpeningPrices] = useState({});
 
-    // Subscribe + listen via WebSocketManager. Each index is registered
-    // with both its primary symbol and its alts so the LTP arrives
-    // regardless of which name the server emits. Mirrors the legacy
-    // `<MarketIndices>` flow:
-    //   - DO NOT call `WebSocketManager.initialize(...)` — that overwrites
-    //     the singleton's `configData` / `userEmail` and breaks every
-    //     other subscriber. `websocketInitializer.js` owns the lifecycle.
-    //   - Subscribe to every (primary + alt) symbol pair eagerly. The
-    //     server emits whichever name it knows; we accept all of them and
-    //     normalize back to the canonical symbol.
+    // Subscribe + listen via WebSocketManager. Subscribe to the PRIMARY
+    // symbol ONLY — exactly like the legacy `<MarketIndices>` (which uses
+    // alternativeSymbols: [] and renders the correct live values on every
+    // other screen). Subscribing to the alts too and collapsing them onto one
+    // canonical key was the bug: the server publishes both "NIFTY" and
+    // "NIFTY 50", and "NIFTY 50" carried a STALE snapshot value with no live
+    // ticks — so the home header locked onto / flip-flopped to 23,242.1 while
+    // the live "NIFTY" stream (and every other screen) read 23,215.0, and the
+    // stale value's change rounded to 0.00 (then got suppressed → blank).
+    // The primary symbol is the reliably-live stream for all three indices.
+    //   - DO NOT call `WebSocketManager.initialize(...)` — that overwrites the
+    //     singleton's configData/userEmail and breaks every other subscriber.
+    //     `websocketInitializer.js` owns the lifecycle.
     useEffect(() => {
         if (!configData) return undefined;
         const ws = WebSocketManager.getInstance();
         if (!ws) return undefined;
 
-        const pairs = [];
         INDICES.forEach((cfg) => {
-            pairs.push({ canonicalSymbol: cfg.symbol, name: cfg.symbol, exchange: cfg.exchange });
-            cfg.alts.forEach((alt) =>
-                pairs.push({ canonicalSymbol: cfg.symbol, name: alt, exchange: cfg.exchange }),
-            );
-        });
-
-        pairs.forEach(({ canonicalSymbol, name, exchange }) => {
             const cb = ({ ltp }) => {
                 const num = Number(ltp);
                 if (!Number.isFinite(num) || num <= 0) return;
                 setLtps((prev) =>
-                    prev[canonicalSymbol] === num
+                    prev[cfg.symbol] === num
                         ? prev
-                        : { ...prev, [canonicalSymbol]: num },
+                        : { ...prev, [cfg.symbol]: num },
                 );
             };
-            ws.subscribe(name, exchange, cb);
+            ws.subscribe(cfg.symbol, cfg.exchange, cb);
         });
         // WebSocketManager doesn't expose a per-callback unsubscribe API —
         // the legacy MarketIndices accepts the leak too. The closures are
@@ -166,7 +170,21 @@ export default function useHomeMarketSummary() {
     // One-shot fetch of previous-close.
     useEffect(() => {
         let cancelled = false;
-        const fetchPrev = async () => {
+        // RETRY before degrading. A single transient failure of the prev-close
+        // HTTP endpoint (a network blip — note: the WS LTPs keep arriving) used
+        // to immediately flip to 'opening' mode → baseline = first live tick →
+        // when the market is closed (flat) EVERY index renders 0.00 even though
+        // the values are correct. Retry up to 3× (1.5s apart) so a blip doesn't
+        // strand the header on the misleading 0.00. Mirrors MarketIndices.js.
+        const fetchPrev = async (attempt = 0) => {
+            const degradeOrRetry = () => {
+                if (cancelled) return;
+                if (attempt < 3) {
+                    setTimeout(() => { if (!cancelled) fetchPrev(attempt + 1); }, 1500);
+                } else {
+                    setComparisonType('opening');
+                }
+            };
             try {
                 const url = `${server.ccxtServer.baseUrl}misc/indices-previous-close`;
                 const payload = {
@@ -184,7 +202,7 @@ export default function useHomeMarketSummary() {
                 if (cancelled) return;
                 const data = res?.data?.data;
                 if (!data || typeof data !== 'object') {
-                    setComparisonType('opening');
+                    degradeOrRetry();
                     return;
                 }
                 const next = {};
@@ -202,14 +220,32 @@ export default function useHomeMarketSummary() {
                     if (Number.isFinite(num)) next[cfg.symbol] = num;
                 });
                 if (Object.keys(next).length === 0) {
-                    setComparisonType('opening');
+                    degradeOrRetry();
                     return;
                 }
-                setPreviousClose(next);
+                // MERGE across attempts — do NOT replace. The endpoint
+                // intermittently returns a SUBSET (e.g. SENSEX only, missing
+                // NIFTY / BANKNIFTY). Replacing dropped the other indices'
+                // base → their change computed as 0.00 → suppressed → no chip
+                // (observed: Sensex fine, Nifty/BankNifty blank). Merging keeps
+                // every base once seen.
+                setPreviousClose((prev) => ({ ...prev, ...next }));
                 setComparisonType('prevClose');
+                // Partial response → retry to fill the missing indices (keeping
+                // what we already have). The endpoint's subset varies per call,
+                // so a retry usually returns the ones this call omitted.
+                if (
+                    Object.keys(next).length < INDICES.length &&
+                    attempt < 3 &&
+                    !cancelled
+                ) {
+                    setTimeout(() => {
+                        if (!cancelled) fetchPrev(attempt + 1);
+                    }, 1500);
+                }
             } catch {
-                // Server unreachable / errored — switch to opening-price mode.
-                setComparisonType('opening');
+                // Server unreachable / errored — retry, then fall back to opening.
+                degradeOrRetry();
             }
         };
         fetchPrev();

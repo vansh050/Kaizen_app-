@@ -19,7 +19,7 @@ import Animated, {
 import Loader from '../utils/Loader';
 import {ChevronRight} from 'lucide-react-native';
 import Config from '../utils/safeConfig';
-const selectedVariant = Config?.APP_VARIANT || 'kaizenalpha'; // Default to "kaizenalpha" if not set
+const selectedVariant = Config?.APP_VARIANT || 'rgxresearch'; // Default to "rgxresearch" if not set
 
 const SliderButton = ({
   loading,

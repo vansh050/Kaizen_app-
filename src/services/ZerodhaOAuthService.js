@@ -138,7 +138,7 @@ const exchangeRequestToken = async (requestToken) => {
     }
 
     const baseUrl = Config?.REACT_APP_NODE_SERVER_API_URL || server.server.baseUrl;
-    const subdomain = Config?.REACT_APP_ADVISOR_SUBDOMAIN || Config?.REACT_APP_HEADER_NAME || 'kaizenalpha';
+    const subdomain = Config?.REACT_APP_ADVISOR_SUBDOMAIN || Config?.REACT_APP_HEADER_NAME || 'rgxresearch';
 
     const headers = {
       'Content-Type': 'application/json',
@@ -241,7 +241,7 @@ export const validateToken = async () => {
 
     const headers = {
       'Content-Type': 'application/json',
-      'X-Advisor-Subdomain': Config?.REACT_APP_X_ADVISOR_SUBDOMAIN || Config?.REACT_APP_HEADER_NAME || 'kaizenalpha',
+      'X-Advisor-Subdomain': Config?.REACT_APP_X_ADVISOR_SUBDOMAIN || Config?.REACT_APP_HEADER_NAME || 'rgxresearch',
       'aq-encrypted-key': Config?.REACT_APP_AQ_ENCRYPTED_KEY || generateToken(
         Config?.REACT_APP_AQ_KEYS,
         Config?.REACT_APP_AQ_SECRET

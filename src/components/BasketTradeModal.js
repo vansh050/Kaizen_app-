@@ -127,14 +127,22 @@ const BasketTradeModal = ({
             });
             baseQuantitiesRef.current = baseQtys;
 
-            const tradeWithImpliedMultiplier = stockDetails.find(
-                (item) =>
-                    item.ImpliedMultiplier !== undefined &&
-                    item.ImpliedMultiplier !== null &&
-                    item.ImpliedMultiplier !== '',
-            );
+            // B-24 (2026-05-19 mobile migration): clamp ImpliedMultiplier
+            // to >= 1 before pushing into state. A partial-fill leg written
+            // pre-B-9 (or any leg the broker filled with ImpliedMultiplier=0
+            // because tradedQty was sub-Quantity) used to leak "0" into
+            // the multiplier input. From "0" the + button took two clicks
+            // to reach "2" (0→1→2). Reading anything < 1 falls back to the
+            // existing "1" default.
+            const tradeWithImpliedMultiplier = stockDetails.find((item) => {
+                const v = item?.ImpliedMultiplier;
+                if (v === undefined || v === null || v === '') return false;
+                const n = parseInt(v, 10);
+                return !isNaN(n) && n >= 1;
+            });
             if (tradeWithImpliedMultiplier && multiplier === '1') {
-                setMultiplier(tradeWithImpliedMultiplier.ImpliedMultiplier.toString());
+                const v = parseInt(tradeWithImpliedMultiplier.ImpliedMultiplier, 10);
+                setMultiplier(String(Math.max(1, v)));
             }
         }
     }, [stockDetails, isClosureBasket]);
@@ -201,7 +209,11 @@ const BasketTradeModal = ({
     };
 
     const handleQuantityInputChangeAll = (value) => {
-        const newMultiplier = parseInt(value) || 1;
+        // B-24: clamp to floor of 1. parseInt(value) returns NaN for '' and
+        // 0 for '0' — both should fall back to 1, not 0. Math.max guards
+        // against any negative input too.
+        const parsed = parseInt(value, 10);
+        const newMultiplier = isNaN(parsed) ? 1 : Math.max(1, parsed);
         setTotalQuantity(newMultiplier);
         applyMultiplierToStockDetails(newMultiplier);
     };

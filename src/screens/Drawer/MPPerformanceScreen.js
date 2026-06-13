@@ -39,6 +39,7 @@ import {useTrade} from '../TradeContext';
 import {useConfig} from '../../context/ConfigContext';
 import {useGstConfig} from '../../context/GstConfigContext';
 import {withGst, gstLabel} from '../../utils/gstHelpers';
+import {getSubscriptionStatusString} from '../../utils/subscriptionStatus';
 
 import PaymentSuccessModal from '../../components/ModelPortfolioComponents/PaymentSuccessModal';
 import MPInvestNowModal from '../../components/ModelPortfolioComponents/MPInvestNowModal';
@@ -351,38 +352,13 @@ const MPPerformanceScreen = ({route}) => {
   };
   useEffect(() => { getAllSubscriptionData(); }, []);
 
-  // Subscription status
-  const ACCEPTABLE_DATE_FORMATS = ['D MMM YYYY, HH:mm:ss', 'YYYY-MM-DDTHH:mm:ss.SSSZ'];
-  const getSubscriptionStatus = (planName, subscriptions) => {
-    const normalizeGroupName = name => {
-      if (!name) return '';
-      return name.toLowerCase().replace(/%20/g, ' ').replace(/\s+/g, '_').trim();
-    };
-    if (!subscriptions || subscriptions.length === 0) return 'none';
-    const matchingPlanSubs = subscriptions.filter(sub => {
-      const nSub = normalizeGroupName(sub?.plan);
-      const nPlan = normalizeGroupName(planName);
-      return nSub === nPlan || nSub.includes(nPlan) || nPlan.includes(nSub);
-    });
-    if (matchingPlanSubs.length === 0) return 'none';
-    const activeSubscriptions = matchingPlanSubs.filter(sub => sub?.status !== 'deleted');
-    if (activeSubscriptions.length === 0) return 'none';
-    const neverExpiring = activeSubscriptions.filter(sub => sub.expiry === null);
-    if (neverExpiring.length > 0) return 'active';
-    const validSubs = activeSubscriptions.filter(sub =>
-      sub.expiry ? moment(sub.expiry, ACCEPTABLE_DATE_FORMATS, true).isValid() : false,
-    );
-    if (validSubs.length === 0) return 'none';
-    const latestSub = validSubs.sort(
-      (a, b) => moment(b.expiry, ACCEPTABLE_DATE_FORMATS) - moment(a.expiry, ACCEPTABLE_DATE_FORMATS),
-    )[0];
-    const daysLeft = moment(latestSub?.expiry, ACCEPTABLE_DATE_FORMATS).diff(moment(), 'days');
-    if (daysLeft < 0) return 'expired';
-    if (daysLeft <= 7) return 'renew';
-    return 'active';
-  };
-
-  const subscriptionStatus = getSubscriptionStatus(modelName, subscriptionData?.subscriptions);
+  // Shared util — consults subscriptionData.groups before subscriptions
+  // (web parity, prod-alphaquark-github/src/Home/PricingSection/IPOCard.js
+  // hasActiveSubscription). Pass the FULL subscriptionData object so the
+  // groups branch can fire; the previous inline copy only looked at
+  // `.subscriptions` and produced false-positives for plans the user
+  // never subscribed to.
+  const subscriptionStatus = getSubscriptionStatusString(modelName, subscriptionData);
   const isActive = subscriptionStatus === 'active' || subscriptionStatus === 'renew';
   // Defend against backend variants that return `subscribed_by` as something
   // other than an array (alphanomy tenant has surfaced it as an object on

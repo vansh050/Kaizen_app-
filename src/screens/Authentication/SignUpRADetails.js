@@ -31,8 +31,8 @@ const SignUpRADetails = ({ route }) => {
     const { reloadConfigData, getAllTrades, getModelPortfolioStrategyDetails } = useTrade();
     const navigation = useNavigation();
     const config = useConfig();
-    const selectedVariant = Config?.APP_VARIANT || 'kaizenalpha';
-    const validVariant = APP_VARIANTS[selectedVariant] ? selectedVariant : 'kaizenalpha';
+    const selectedVariant = Config?.APP_VARIANT || 'rgxresearch';
+    const validVariant = APP_VARIANTS[selectedVariant] ? selectedVariant : 'rgxresearch';
     const fallbackConfig = APP_VARIANTS[validVariant] || {};
 
     const logo = config?.logo || fallbackConfig.logo;

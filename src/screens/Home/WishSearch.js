@@ -18,7 +18,7 @@ const WishSearch = ({ searchQuery, onBackPress, onQueryChange, onBookmark, curre
 
   // Get dynamic config from API
   const config = useConfig();
-  const selectedVariant = Config?.APP_VARIANT || 'kaizenalpha';
+  const selectedVariant = Config?.APP_VARIANT || 'rgxresearch';
   const themeColor = config?.themeColor || '#0056B7';
   const mainColor = config?.mainColor || '#0056B7';
   const gradient1 = config?.gradient1 || '#0056B7';

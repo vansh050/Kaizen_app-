@@ -12,7 +12,9 @@
  * ============================================================================
  */
 
-import KaizenAlphaLogo from '../src/assets/AppLogo/kaizenalpha.png';
+// Logo lives in the design overlay so a clean upstream src/ sync doesn't wipe it.
+// See docs/WHITELABEL_RECIPE.md § "What forks must NOT have" (no tenant assets in src/).
+import KaizenAlphaLogo from '../designs/kaizenalpha/assets/logo.png';
 
 const APP_VARIANTS = {
   kaizenalpha: {

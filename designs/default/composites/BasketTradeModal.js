@@ -235,6 +235,46 @@ const BasketTradeModal = ({ viewModel, actions }) => {
 
     // --- REGULAR BASKET ---
     if (mode === 'basket') {
+        // B-15 + B-37 (2026-05-19 mobile migration): per-leg status pills
+        // so the customer sees what's already happened with each leg:
+        //   • Partial fill (⚡ N/M filled): broker filled some, remaining
+        //     in-flight or needs retry. Place Order will re-attempt with
+        //     B-10 backend retry-sizing trimmed to remainingQty.
+        //   • Rejected (⚠ Rejected — will retry): leg was rejected by
+        //     broker on a prior placement (margin block / surveillance /
+        //     throttle / transient API). Customer addresses the root
+        //     cause then re-clicks Place Order → leg goes fresh.
+        //   • Already executed (✓ Done): leg already filled, will NOT be
+        //     re-placed (B-36 ensures it stays visible for the count, but
+        //     not actionable).
+        const renderStatusPill = (item) => {
+            const status = String(item?.trade_place_status || '').toLowerCase();
+            if (item?.partial_fill && status === 'partial') {
+                const filled = item.filledQty ?? item.tradedQty ?? 0;
+                const target = item.Quantity ?? item.quantity ?? 0;
+                return (
+                    <View style={statusPillStyles.partialPill}>
+                        <Text style={statusPillStyles.partialPillText}>{`⚡ ${filled}/${target} filled`}</Text>
+                    </View>
+                );
+            }
+            if (status === 'rejected' || status === 'failure') {
+                return (
+                    <View style={statusPillStyles.rejectedPill}>
+                        <Text style={statusPillStyles.rejectedPillText}>{'⚠ Rejected — will retry'}</Text>
+                    </View>
+                );
+            }
+            if (['complete', 'executed', 'success', 'filled'].includes(status) && !item?.partial_fill) {
+                return (
+                    <View style={statusPillStyles.completedPill}>
+                        <Text style={statusPillStyles.completedPillText}>{'✓ Done'}</Text>
+                    </View>
+                );
+            }
+            return null;
+        };
+
         const renderTradeRow = ({ item, index }) => (
             <View style={styles.tableRow} key={index}>
                 <View style={styles.tableCell}>
@@ -242,6 +282,7 @@ const BasketTradeModal = ({ viewModel, actions }) => {
                     <Text style={[styles.tradeType, item.Type === 'SELL' ? styles.sell : styles.buy]}>
                         {item.Type === 'SELL' ? 'SELL' : 'BUY'}
                     </Text>
+                    {renderStatusPill(item)}
                 </View>
                 <View style={styles.tableCell}>
                     {renderReviewTradeText(item)}
@@ -455,6 +496,43 @@ const BasketTradeModal = ({ viewModel, actions }) => {
         </ModalShell>
     );
 };
+
+// B-15 + B-37 per-leg status pills (2026-05-19 mobile migration).
+const statusPillStyles = StyleSheet.create({
+    partialPill: {
+        marginTop: 4,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        backgroundColor: '#FEF3C7',
+        borderColor: '#F59E0B',
+        borderWidth: 1,
+        borderRadius: 10,
+        alignSelf: 'flex-start',
+    },
+    partialPillText: { fontSize: 10, color: '#92400E', fontWeight: '600' },
+    rejectedPill: {
+        marginTop: 4,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        backgroundColor: '#FEE2E2',
+        borderColor: '#DC2626',
+        borderWidth: 1,
+        borderRadius: 10,
+        alignSelf: 'flex-start',
+    },
+    rejectedPillText: { fontSize: 10, color: '#991B1B', fontWeight: '600' },
+    completedPill: {
+        marginTop: 4,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        backgroundColor: '#D1FAE5',
+        borderColor: '#10B981',
+        borderWidth: 1,
+        borderRadius: 10,
+        alignSelf: 'flex-start',
+    },
+    completedPillText: { fontSize: 10, color: '#065F46', fontWeight: '600' },
+});
 
 const styles = StyleSheet.create({
     closeButton: { position: 'absolute', top: 10, right: 10, zIndex: 1 },

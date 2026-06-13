@@ -25,14 +25,13 @@
  */
 
 import defaultVariant from './default';
+import kaizenalphaVariant from './kaizenalpha';
 
 export const DEFAULT_VARIANT_NAME = 'default';
 
 export const VARIANTS = {
     [DEFAULT_VARIANT_NAME]: defaultVariant,
-    // Add custom variants here:
-    // acme: require('./acme').default,
-    // zamzamcapital: require('./zamzamcapital').default,
+    kaizenalpha: kaizenalphaVariant,
 };
 
 export default VARIANTS;

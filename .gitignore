@@ -58,6 +58,10 @@ yarn-error.log
 # Bundle artifact
 *.jsbundle
 
+# Build artifacts — never commit signed binaries to the repo (large + private keys)
+*.apk
+*.aab
+
 # Ruby / CocoaPods
 **/Pods/
 /vendor/bundle/

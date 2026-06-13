@@ -704,7 +704,7 @@ export const tryResolveAdvisor = async email => {
         headers: {
           'Content-Type': 'application/json',
           'X-Advisor-Subdomain':
-            Config.REACT_APP_WHITE_LABEL_TEXT || 'kaizenalpha',
+            Config.REACT_APP_WHITE_LABEL_TEXT || 'alphaquark',
           'aq-encrypted-key': generateToken(
             Config.REACT_APP_AQ_KEYS,
             Config.REACT_APP_AQ_SECRET,

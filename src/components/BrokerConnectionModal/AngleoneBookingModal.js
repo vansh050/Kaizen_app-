@@ -250,7 +250,7 @@ const AngleOneBookingTrueSheet = ({
         // Both fixed; this is the canonical web-equivalent flow.
         const ccxtUrl = server.ccxtServer.baseUrl;
         const domainList = String(Config?.REACT_APP_DOMAIN || '').split(',');
-        const webOrigin = (domainList[0] || 'https://kaizenalpha.in').trim();
+        const webOrigin = (domainList[0] || 'https://prod.alphaquark.in').trim();
         const origin = encodeURIComponent(webOrigin);
         const returnPath = encodeURIComponent('stock-recommendation');
         // Legacy callback URL — registered in the broker dev portal

@@ -115,9 +115,35 @@ const IP_WHITELIST_BROKERS = new Set([
   'Fyers',
 ]);
 
+// EgressIpCallout expects the lowercase backend broker_key (the same
+// key the legacy *ConnectUI callers pass: "icicidirect", "hdfcsec",
+// "motilaloswal", …) and short-circuits to brokerState="partner"
+// (renders nothing) for anything not in its WHITELIST_BROKERS set.
+// This modal's `brokerName` is the DISPLAY name ("ICICI Direct"), which
+// lowercases to "icici direct" (with a space) — NOT in the set — so the
+// IP panel silently disappeared for the multi-word brokers (ICICI Direct,
+// Hdfc Securities, Motilal Oswal). bug-81: user reported "I can't see the
+// IP field for ICICI" while the instructions still referenced the
+// missing "IP-whitelist panel above". Single-word brokers (Upstox/Fyers/
+// Kotak/Groww) lowercased to the right key by accident, masking the bug.
+// Map every IP broker explicitly so the callout resolves correctly.
+const EGRESS_BROKER_KEY = {
+  Upstox: 'upstox',
+  Fyers: 'fyers',
+  Kotak: 'kotak',
+  Groww: 'groww',
+  ICICI: 'icicidirect',
+  'ICICI Direct': 'icicidirect',
+  HDFC: 'hdfcsec',
+  'Hdfc Securities': 'hdfcsec',
+  'Motilal Oswal': 'motilaloswal',
+  'Angel One': 'angelone',
+  'IIFL Securities': 'iifl',
+};
+
 const REDIRECT_URL =
   Config?.REACT_APP_BROKER_CONNECT_REDIRECT_URL ||
-  'https://kaizenalpha.in/stock-recommendation';
+  'https://prod.alphaquark.in/stock-recommendation';
 
 /**
  * Encrypt a credential field with the same `ApiKeySecret` envelope
@@ -607,6 +633,19 @@ const Phase3SdkBrokerModal = ({
     !IP_WHITELIST_BROKERS.has(brokerName),
   );
 
+  // When the user interacts with the still-locked form, flash the
+  // EgressIpCallout acknowledgment checkbox (showUnmetAck) and scroll
+  // back up to it. Replaces the old behaviour where the form was just
+  // dimmed to opacity 0.45 with no explanation — users reported the
+  // screen looked like it had a "white transparent layer" with no clue
+  // that the IP-whitelist checkbox above was the thing blocking them.
+  const [unmetAck, setUnmetAck] = useState(false);
+  const scrollRef = useRef(null);
+  const nudgeEgressAck = () => {
+    setUnmetAck(true);
+    scrollRef.current?.scrollTo({y: 0, animated: true});
+  };
+
   if (!isVisible) return null;
 
   const onSuccess = async () => {
@@ -762,6 +801,8 @@ const Phase3SdkBrokerModal = ({
           // full page scrolls as one unit. The SDK form's own
           // internal ScrollView is disabled via nestedScrollEnabled.
           <ScrollView
+            ref={scrollRef}
+            style={styles.formScroll}
             contentContainerStyle={styles.scrollPad}
             nestedScrollEnabled={true}
             keyboardShouldPersistTaps="handled">
@@ -780,9 +821,14 @@ const Phase3SdkBrokerModal = ({
           {IP_WHITELIST_BROKERS.has(brokerName) ? (
             <View style={styles.calloutWrap}>
               <EgressIpCallout
-                broker={brokerName}
+                broker={
+                  EGRESS_BROKER_KEY[brokerName] ||
+                  String(brokerName).toLowerCase()
+                }
                 customerEmail={emailFromCtx || ''}
                 onAcknowledgeChange={(ready) => setEgressReady(!!ready)}
+                showUnmetAck={unmetAck}
+                onUnmetAckHandled={() => setUnmetAck(false)}
               />
             </View>
           ) : null}
@@ -791,11 +837,28 @@ const Phase3SdkBrokerModal = ({
             <Phase3BrokerHelp brokerName={brokerName} />
           ) : null}
 
+          {!egressReady && IP_WHITELIST_BROKERS.has(brokerName) ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={nudgeEgressAck}
+              accessibilityRole="button"
+              accessibilityLabel="Whitelist your IP to unlock the connect form"
+              style={styles.lockNotice}>
+              <Text style={styles.lockNoticeText}>
+                🔒 One step left — tick the “I’ve added … to my{' '}
+                {brokerName} developer portal whitelist” box above to unlock the
+                form below. Tap here to jump back to it.
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
           <View
-            style={[
-              styles.formWrap,
-              !egressReady && {opacity: 0.45},
-            ]}>
+            style={[styles.formWrap, !egressReady && styles.formWrapLocked]}
+            pointerEvents={
+              !egressReady && IP_WHITELIST_BROKERS.has(brokerName)
+                ? 'none'
+                : 'auto'
+            }>
             <BrokerCredentialForm
               broker={brokerName}
               schemaOverride={schemaOverride || undefined}
@@ -866,8 +929,20 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     paddingHorizontal: 8,
   },
+  // formScroll fills the panel's remaining height (below the Header) so
+  // the content container's flexGrow has a bounded parent to grow into.
+  // Without flex:1 here the ScrollView sized to content, and a flex:1
+  // child (formWrap) collapsed to 0 height — leaving empty-field brokers
+  // with no callout/help (Dhan, AliceBlue) showing a blank body (bug 78).
+  formScroll: {
+    flex: 1,
+  },
   scrollPad: {
     paddingBottom: 24,
+    // flexGrow lets the content fill at least the viewport so formWrap's
+    // flex:1 resolves to a real height for short brokers, while taller
+    // brokers (callout + help + form) still overflow and scroll.
+    flexGrow: 1,
   },
   calloutWrap: {
     paddingHorizontal: 16,
@@ -875,6 +950,28 @@ const styles = StyleSheet.create({
   },
   formWrap: {
     flex: 1,
+  },
+  // Disabled-pending-IP-whitelist state. A gentle dim (not the old
+  // unexplained 0.45) PAIRED with the lockNotice banner above so the
+  // form reads as "intentionally locked until you finish a step",
+  // never as a mysterious translucent overlay.
+  formWrapLocked: {
+    opacity: 0.55,
+  },
+  lockNotice: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D',
+    borderWidth: 1,
+    borderRadius: 10,
+  },
+  lockNoticeText: {
+    color: '#92400E',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
   },
   cautionaryBox: {
     margin: 16,

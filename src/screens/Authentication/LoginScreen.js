@@ -61,7 +61,18 @@ const LoginScreen = () => {
 
     React.useEffect(() => {
         if (config?.googleWebClientId) {
-            GoogleSignin.configure({ webClientId: config.googleWebClientId });
+            GoogleSignin.configure({
+                webClientId: config.googleWebClientId,
+                // iOS GoogleSignIn needs the project's OWN client ID (NOT the web
+                // client ID) or GIDSignIn raises an NSException and crashes on
+                // signIn(). Sourced per-tenant from config.googleIosClientId
+                // (backend appadvisors.googleIosClientId or the variant's
+                // googleIosClientId). Omitted when unset — a harmless no-op on
+                // Android and for tenants without an iOS build.
+                ...(config.googleIosClientId
+                    ? { iosClientId: config.googleIosClientId }
+                    : {}),
+            });
         }
     }, [config?.googleWebClientId]);
 

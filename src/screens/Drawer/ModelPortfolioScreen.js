@@ -98,14 +98,28 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
 
   const routes = React.useMemo(() => {
     const availableRoutes = [];
-    if (config?.bespokePlansEnabled !== false) {
+    // Bespoke tab: shown only when the admin flag allows it AND the bespoke
+    // catalog actually has at least one plan. Tenants that offer no bespoke
+    // plans no longer get a dead "Bespoke Plan" tab. `allBespoke` is
+    // async-loaded, so the tab appears once the catalog lands (and never, if
+    // it's empty). Admin can still force-hide via bespokePlansEnabled=false.
+    if (config?.bespokePlansEnabled !== false && (allBespoke?.length || 0) > 0) {
       availableRoutes.push({key: 'bespoke', title: 'Bespoke Plan'});
     }
     if (config?.modelPortfolioEnabled !== false) {
       availableRoutes.push({key: 'modelportfolio', title: 'Model Portfolio'});
     }
     return availableRoutes;
-  }, [config]);
+  }, [config, allBespoke?.length]);
+
+  // Keep the selected tab index valid when `routes` shrinks (e.g. the bespoke
+  // tab drops out because its catalog came back empty) — a stale index past
+  // the end of `routes` crashes react-native-tab-view.
+  React.useEffect(() => {
+    if (index > routes.length - 1) {
+      setIndex(Math.max(0, routes.length - 1));
+    }
+  }, [routes.length, index]);
 
   const [selectedPlanType, setSelectedPlanType] = useState(null);
   const advisorTag = configData?.config?.REACT_APP_ADVISOR_SPECIFIC_TAG;
@@ -140,7 +154,9 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
           },
         },
       );
-      setAllBespoke(response.data.data);
+      // Hide draft (unpublished) plans — matches web parity.
+      const published = (response.data.data || []).filter(plan => !plan?.draft);
+      setAllBespoke(published);
     } catch (error) {
       console.error('Error fetching bespoke:', error);
     } finally {
@@ -164,7 +180,9 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
           },
         },
       );
-      setAllStrategy(response.data.data);
+      // Hide draft (unpublished) plans — matches web parity.
+      const published = (response.data.data || []).filter(plan => !plan?.draft);
+      setAllStrategy(published);
     } catch (error) {
       console.error('Error fetching strategy:', error);
     } finally {

@@ -1,35 +1,37 @@
 /**
  * BrandLogo — variant-aware brand-mark renderer.
  *
- * Drop-in replacement for places that historically rendered the
- * legacy AlphaQuark / Zamzam PNG via `<Image source={...}>`. On the
- * alphanomy fork (`DESIGN_VARIANT=alphanomy`) we render the JS-drawn
- * `<AlphanomyLogo>` instead — the alphanomy variant doesn't ship a
- * finalized PNG and the gradient mark is what `designs/alphanomy/`
- * uses everywhere else (`_AppHeader`, profile card, etc.).
+ * Renders the active variant's brand logo, resolved from the design-system
+ * asset token `useTokens().assets.logoPng`. The DesignProvider picks the
+ * variant at mount (DESIGN_VARIANT → APP_VARIANT → default), so:
+ *   - default variant → AlphaQuark logo (src/assets/logo.png)
+ *   - alphanomy fork  → designs/alphanomy/assets/logo.png
+ * No variant name is hardcoded here — adding a tenant is purely a
+ * designs/<variant>/tokens/assets.js concern. See
+ * docs/DESIGN_SYSTEM_ARCHITECTURE.md § Variant assets and
+ * docs/WHITELABEL_RECIPE.md.
  *
- * Other variants render `<Image source={source}>` exactly as before
- * — no behavioural change.
+ * `source` is an optional fallback used only when the variant ships no
+ * `assets.logoPng` (keeps the historical `<Image source={...}>` callsites
+ * working). For the default variant the token resolves to the same
+ * src/assets/logo.png those callsites passed, so behaviour is unchanged.
  *
  * Usage:
  *   import BrandLogo from '.../BrandLogo';
- *   import LegacyLogo from '../assets/logo.png';
- *   <BrandLogo source={LegacyLogo} size={150} style={...} />
+ *   <BrandLogo size={150} style={...} />            // variant brand mark
+ *   <BrandLogo source={LegacyLogo} size={30} />     // explicit fallback
  */
 
 import React from 'react';
 import { Image } from 'react-native';
-import Config from '../utils/safeConfig';
-import AlphanomyLogo from './AlphanomyLogo';
+import useTokens from '../theme/useTokens';
 
 const BrandLogo = ({ source, size = 56, style, resizeMode = 'contain' }) => {
-    const variant = Config?.DESIGN_VARIANT;
-    if (variant === 'alphanomy') {
-        return <AlphanomyLogo size={size} style={style} />;
-    }
+    const tokens = useTokens();
+    const logoSource = tokens?.assets?.logoPng || source;
     return (
         <Image
-            source={source}
+            source={logoSource}
             style={[{ width: size, height: size }, style]}
             resizeMode={resizeMode}
         />

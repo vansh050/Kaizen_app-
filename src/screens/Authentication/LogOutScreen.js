@@ -31,7 +31,14 @@ const LogoutScreen = ({ navigation }) => {
 
     useEffect(() => {
         if (config?.googleWebClientId) {
-            GoogleSignin.configure({ webClientId: config.googleWebClientId });
+            GoogleSignin.configure({
+                webClientId: config.googleWebClientId,
+                // iOS-only client ID, sourced per-tenant from config (see
+                // LoginScreen for the full rationale). No-op when unset.
+                ...(config.googleIosClientId
+                    ? { iosClientId: config.googleIosClientId }
+                    : {}),
+            });
         }
     }, [config?.googleWebClientId]);
 

@@ -53,7 +53,10 @@ const fetchCatalog = async (kind, advisorTag, userEmail, headerName) => {
             },
         );
         const data = res?.data?.data;
-        return Array.isArray(data) ? data : [];
+        // Hide draft (unpublished) plans — matches web parity. Without this,
+        // a plan that an advisor flips to draft on the dashboard keeps showing
+        // in the home summary cards.
+        return Array.isArray(data) ? data.filter(plan => !plan?.draft) : [];
     } catch {
         return [];
     }

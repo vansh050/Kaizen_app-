@@ -10,9 +10,10 @@ import {
   FlatList,
   ActivityIndicator,
   SafeAreaView,
+  Alert,
 } from 'react-native';
 import { useWindowDimensions } from 'react-native';
-import { XIcon, CandlestickChartIcon, AlertOctagon, CheckIcon } from 'lucide-react-native';
+import { XIcon, CandlestickChartIcon, AlertOctagon, CheckIcon, AlertTriangle } from 'lucide-react-native';
 import server from '../../utils/serverConfig';
 import IsMarketHours from '../../utils/isMarketHours';
 import { computeTradeVariant } from '../../utils/tradeVariant';
@@ -31,6 +32,8 @@ import {
   defaultDecrypt,
   isBrokerAuthError,
   detectTransientOrderWindowError,
+  isCautionaryListingMessage,
+  isInsufficientFundsMessage,
 } from '../../utils/rebalanceHelpers';
 import useModalStore from '../../GlobalUIModals/modalStore';
 const { height: screenHeight } = Dimensions.get('window');
@@ -43,6 +46,7 @@ import { isOrderSuccess, isOrderRejected } from '../../utils/orderStatusUtils';
 import { validateBrokerSession } from '../../utils/brokerSessionUtils';
 import { validateStockExchanges, applyKiteMarketProtection, getPublisherWebViewBaseUrl, resolveZerodhaSymbol } from '../../utils/brokerPublisher';
 import useZerodhaSymbolMap from '../../hooks/useZerodhaSymbolMap';
+import useKitePublisherPolling from '../../hooks/useKitePublisherPolling';
 import { getAdvisorSubdomain } from '../../utils/variantHelper';
 import { convertResponse } from '../../utils/tradeUtils';
 import useWebSocketCurrentPrice from '../../FunctionCall/useWebSocketCurrentPrice';
@@ -139,84 +143,25 @@ const RebalanceModal = ({
   const [zerodhaStatus, setZerodhaStatus] = useState(null);
   const [zerodhaRequestType, setZerodhaRequestType] = useState(null);
 
-  // Publisher order-book polling fallback (matching web pattern)
-  // When Zerodha/Fyers WebView callback doesn't fire, poll the broker's
-  // order book to detect when new orders appear.
-  const POLL_INTERVAL_MS = 5000;
-  const POLL_TIMEOUT_MS = 90000;
-  const publisherProcessedRef = useRef(false);
-  const pollingIntervalRef = useRef(null);
-  const pollingTimeoutRef = useRef(null);
-  const baselineOrderIdsRef = useRef(new Set());
-
-  const stopOrderPolling = useCallback(() => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
-    if (pollingTimeoutRef.current) {
-      clearTimeout(pollingTimeoutRef.current);
-      pollingTimeoutRef.current = null;
-    }
-  }, []);
-
-  const startOrderPolling = useCallback(async () => {
-    // Capture baseline order book before user places orders in WebView
-    try {
-      const { fetchOrderBook } = require('../../services/BrokerOrderBookAPI');
-      const baseline = await fetchOrderBook(broker, {clientCode, apiKey, jwtToken, secretKey, sid, serverId}, configData);
-      const orders = baseline?.data || baseline || [];
-      baselineOrderIdsRef.current = new Set(
-        (Array.isArray(orders) ? orders : []).map(o => o.orderId || o.order_id).filter(Boolean),
-      );
-    } catch (err) {
-      console.warn('[Publisher Polling] Failed to fetch baseline orders:', err);
-    }
-
-    pollingIntervalRef.current = setInterval(async () => {
-      if (publisherProcessedRef.current) {
-        stopOrderPolling();
-        return;
-      }
-      try {
-        const { fetchOrderBook } = require('../../services/BrokerOrderBookAPI');
-        const current = await fetchOrderBook(broker, {clientCode, apiKey, jwtToken, secretKey, sid, serverId}, configData);
-        const currentOrders = current?.data || current || [];
-        const newOrders = (Array.isArray(currentOrders) ? currentOrders : []).filter(o => {
-          const id = o.orderId || o.order_id;
-          return id && !baselineOrderIdsRef.current.has(id);
-        });
-
-        if (newOrders.length > 0 && !publisherProcessedRef.current) {
-          console.log(`[Publisher Polling] Detected ${newOrders.length} new orders — triggering post-order flow`);
-          stopOrderPolling();
-          publisherProcessedRef.current = true;
-          setWebView(false);
-          setZerodhaStatus('success');
-          setZerodhaRequestType('rebalance');
-        }
-      } catch (err) {
-        // Polling errors are non-fatal
-      }
-    }, POLL_INTERVAL_MS);
-
-    // Timeout: stop after 90s
-    pollingTimeoutRef.current = setTimeout(() => {
-      if (!publisherProcessedRef.current) {
-        console.warn('[Publisher Polling] Timed out after 90s');
-        stopOrderPolling();
-        publisherProcessedRef.current = true;
-        setWebView(false);
-        setZerodhaStatus('success');
-        setZerodhaRequestType('rebalance');
-      }
-    }, POLL_TIMEOUT_MS);
-  }, [broker, clientCode, apiKey, jwtToken, secretKey, sid, serverId, configData, stopOrderPolling]);
-
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => stopOrderPolling();
-  }, [stopOrderPolling]);
+  // Publisher order-book polling fallback for Kite Publisher WebView
+  // callback misses. Canonical implementation lives in
+  // `src/hooks/useKitePublisherPolling.js` — see
+  // docs/REBALANCING.md § Kite Publisher polling fallback for the
+  // full contract (failure modes, double-fire protection, layer-2
+  // server-side `add-user/status-check-queue` fallback). When the
+  // hook detects new orders OR times out, it drives the same state
+  // transition the WebView callback would have driven, so downstream
+  // `checkZerodhaStatus` runs identically through both channels.
+  const { start: startOrderPolling, stop: stopOrderPolling } = useKitePublisherPolling({
+    broker,
+    brokerCreds: { clientCode, apiKey, jwtToken, secretKey, sid, serverId },
+    configData,
+    onPublisherSettled: () => {
+      setWebView(false);
+      setZerodhaStatus('success');
+      setZerodhaRequestType('rebalance');
+    },
+  });
   console.log("Calculated Portfolio Data---", calculatedPortfolioData);
 
   // Parse skipped stocks message
@@ -282,7 +227,12 @@ const RebalanceModal = ({
 
   // Check if modelPortfolioRepairTrades exists and has trades
   let dataArray = [];
-  if (repairStatus && rebalanceExecutionStatus && rebalanceExecutionStatus !== "toExecute") {
+  // Flag used downstream to render the repair-row chip + CTA. True only
+  // when we entered the modal via the repair-shortcut branch (failedTrades
+  // pre-populated the rows).
+  const isRepairMode =
+    repairStatus && rebalanceExecutionStatus && rebalanceExecutionStatus !== "toExecute";
+  if (isRepairMode) {
     dataArray =
       matchingRepairTrade?.failedTrades
         ?.filter((trade) => !trade?.advSymbol?.includes("CASH-EQ"))
@@ -293,6 +243,18 @@ const RebalanceModal = ({
           exchange: trade?.advExchange,
           zerodhaTradeId: trade?.zerodhaTradeId,
           token: trade?.token ? trade?.token : "",
+          // Carry original-rejection fields through to row-render so the
+          // cautionary / LOW_FUNDS chip can be marked per-row. ccxt-india
+          // `rebalancing/utils/db_manager.repair()` populates these from
+          // `order_results[i]` on the latest advice. See
+          // docs/MODEL_PORTFOLIO_ARCHITECTURE.md § 6g.
+          orderStatusMessage: trade?.orderStatusMessage || '',
+          classification: trade?.classification,
+          // Repair metadata for the row tooltip / "what was filled vs
+          // requested" affordance (partial-fill case from db_manager).
+          originalQty: trade?.originalQty,
+          filledQty: trade?.filledQty,
+          isPartialFill: trade?.isPartialFill,
         })) || [];
   } else if (calculatedPortfolioData && calculatedPortfolioData?.length !== 0) {
     dataArray =
@@ -596,21 +558,38 @@ const RebalanceModal = ({
 
   const rawStockDetails = convertResponse(dataArray, broker);
 
-  // Filter out SELL actions for stocks not in user's holdings (matching web heldSymbols filter)
+  // SELLs in the rebalance response are already netted by the backend against
+  // the user's actual holdings (resultant_of_net_and_holding), so any SELL the
+  // backend emits is a real exit of a held position. The previous client-side
+  // filter required an EXACT match on the FULL symbol (incl. -EQ/-BE/-SM
+  // suffix), which SILENTLY dropped a SELL whenever the held symbol's
+  // exchange-series suffix differed (e.g. holdings stored as "GTLINFRA-EQ" vs
+  // a post-series-migration "GTLINFRA-BE" sell). Silently hiding an exit is
+  // the worst failure mode — the backend still executes the SELL, but the
+  // user never reviews it. We now keep ALL backend SELLs and only LOG (never
+  // drop) when a sell's BASE symbol isn't found in holdings, for
+  // observability. Ported from web parity commit 344b7766.
   const stockDetails = (() => {
     const userHoldings = calculatedPortfolioData?.userHoldings || calculatedPortfolioData?.user_net_pf_model;
     if (!Array.isArray(userHoldings) || userHoldings.length === 0) return rawStockDetails;
-    const heldSymbols = new Set();
+    const baseSym = (s) => (s || '').toUpperCase().split('-')[0];
+    const heldBaseSymbols = new Set();
     userHoldings.forEach(h => {
       const sym = h?.symbol || h?.tradingSymbol || '';
       const qty = h?.quantity || h?.qty || 0;
-      if (sym && qty > 0) heldSymbols.add(sym.toUpperCase());
+      if (sym && qty > 0) heldBaseSymbols.add(baseSym(sym));
     });
-    if (heldSymbols.size === 0) return rawStockDetails;
-    return rawStockDetails.filter(item => {
-      if ((item.transactionType || '').toUpperCase() !== 'SELL') return true;
-      return heldSymbols.has((item.tradingSymbol || item.symbol || '').toUpperCase());
+    if (heldBaseSymbols.size === 0) return rawStockDetails;
+    rawStockDetails.forEach(item => {
+      if ((item.transactionType || '').toUpperCase() !== 'SELL') return;
+      const sym = item.tradingSymbol || item.symbol || '';
+      if (!heldBaseSymbols.has(baseSym(sym))) {
+        console.warn(
+          `[RebalanceModal] SELL ${sym} not matched in current holdings (base-symbol) — showing anyway; backend nets sells against holdings.`,
+        );
+      }
     });
+    return rawStockDetails;
   })();
 
   // --- Zerodha Publisher Flow Functions ---
@@ -796,10 +775,10 @@ const RebalanceModal = ({
 
       const htmlForm = generateHtmlForm(basket, zerodhaApiKey);
       setHtmlContent(htmlForm);
-      publisherProcessedRef.current = false;
       setWebView(true);
 
-      // Start order-book polling fallback (matching web pattern)
+      // Start order-book polling fallback. The hook resets its own
+      // internal processed flag, so we don't need a separate reset here.
       startOrderPolling();
     } catch (error) {
       console.error('Failed to handle Zerodha redirect:', error);
@@ -829,9 +808,10 @@ const RebalanceModal = ({
   };
 
   const checkZerodhaStatus = async () => {
-    // Stop polling — normal WebView callback is proceeding
+    // Stop polling — normal WebView callback is proceeding. The hook's
+    // stop() flips the internal processed flag so any in-flight poll
+    // tick short-circuits before re-firing onPublisherSettled.
     stopOrderPolling();
-    publisherProcessedRef.current = true;
 
     const { zerodhaStockDetails, zerodhaAdditionalPayload } =
       await fetchZerodhaData();
@@ -1968,6 +1948,11 @@ const RebalanceModal = ({
       handlePriceSave,
       handleQtySave,
       getLTPForSymbol,
+      // Repair-mode props — see § 6g
+      isRepairMode,
+      promptMarkAsManuallyPlaced,
+      manualPlacementInFlight,
+      manuallyPlacedSymbols,
     }) => {
       // 🧠 Local state for TextInput values
       const [localPrice, setLocalPrice] = React.useState(
@@ -1985,17 +1970,75 @@ const RebalanceModal = ({
         ? localQty
         : item.qty?.toString() ?? '0';
 
+      // Classify the row for the chip. Cautionary takes precedence over
+      // LOW_FUNDS in the chip copy — cautionary requires placing manually
+      // by definition, whereas LOW_FUNDS may be transient (user adds
+      // funds → retry succeeds).
+      const isCautionary = isRepairMode && isCautionaryListingMessage(item);
+      const isLowFunds =
+        isRepairMode && !isCautionary && isInsufficientFundsMessage(item);
+      const isPartialFill = isRepairMode && item.isPartialFill;
+      const showChip = isCautionary || isLowFunds || isPartialFill;
+      const isThisRowSubmitting = manualPlacementInFlight === item.symbol;
+      const isAlreadyMarked = !!manuallyPlacedSymbols?.[item.symbol];
+
+      const chipLabel = isAlreadyMarked
+        ? 'Marked as placed ✓'
+        : isCautionary
+        ? 'Cautionary listing — place manually'
+        : isLowFunds
+        ? 'Insufficient funds last time'
+        : isPartialFill
+        ? `Partial fill last time (${item.filledQty}/${item.originalQty})`
+        : '';
+
+      const chipStyle = isAlreadyMarked
+        ? styles.chipDone
+        : isCautionary
+        ? styles.chipCautionary
+        : isLowFunds
+        ? styles.chipLowFunds
+        : styles.chipPartial;
+
       return (
         <View style={styles.rowContainer}>
-          <View style={styles.leftContainer}>
-            <Text style={styles.symbol}>{item.symbol}</Text>
-            <Text
-              style={[
-                styles.cellText,
-                item.orderType === 'BUY' ? styles.buyOrder : styles.sellOrder,
-              ]}>
-              {item.orderType}
-            </Text>
+          <View style={{flex: 1}}>
+            <View style={styles.leftContainer}>
+              <Text style={styles.symbol}>{item.symbol}</Text>
+              <Text
+                style={[
+                  styles.cellText,
+                  item.orderType === 'BUY' ? styles.buyOrder : styles.sellOrder,
+                ]}>
+                {item.orderType}
+              </Text>
+            </View>
+            {showChip && (
+              <TouchableOpacity
+                onPress={
+                  isAlreadyMarked || isThisRowSubmitting
+                    ? undefined
+                    : () => promptMarkAsManuallyPlaced(item)
+                }
+                disabled={isAlreadyMarked || isThisRowSubmitting}
+                activeOpacity={isAlreadyMarked ? 1 : 0.6}
+                style={[styles.chipBase, chipStyle]}>
+                {isThisRowSubmitting ? (
+                  <ActivityIndicator size="small" color="#9A3412" />
+                ) : (
+                  <>
+                    {!isAlreadyMarked && <AlertTriangle size={11} color="#9A3412" />}
+                    <Text
+                      style={[
+                        styles.chipText,
+                        isAlreadyMarked && styles.chipTextDone,
+                      ]}>
+                      {chipLabel}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.rightContainer}>
@@ -2045,9 +2088,22 @@ const RebalanceModal = ({
         handlePriceSave={handlePriceSave}
         handleQtySave={handleQtySave}
         getLTPForSymbol={getLTPForSymbol}
+        isRepairMode={isRepairMode}
+        promptMarkAsManuallyPlaced={promptMarkAsManuallyPlaced}
+        manualPlacementInFlight={manualPlacementInFlight}
+        manuallyPlacedSymbols={manuallyPlacedSymbols}
       />
     ),
-    [isBrokerDisconnected, handlePriceSave, handleQtySave, getLTPForSymbol],
+    [
+      isBrokerDisconnected,
+      handlePriceSave,
+      handleQtySave,
+      getLTPForSymbol,
+      isRepairMode,
+      promptMarkAsManuallyPlaced,
+      manualPlacementInFlight,
+      manuallyPlacedSymbols,
+    ],
   );
 
   const debouncedHandlePriceSave = useCallback(
@@ -2079,6 +2135,130 @@ const RebalanceModal = ({
   const handleQtySave = (index, qty) => {
     debouncedHandleQtySave(index, parseInt(qty) || 0);
   };
+
+  // Mark a repair-mode row as manually placed. Calls aq_backend's
+  // /api/model-portfolio-db-update/manual-placement so the advisor's
+  // model_portfolio.rebalanceHistory[].adviceEntries[].status flips to
+  // "executed" + manually_placed_at is stamped, then mutates the local
+  // dataArray to remove the row visually. Mirrors mobile MP success
+  // modal's per-row editor (RecommendationSuccessModal.js:290) but
+  // skips the qty/price input — we use the failed-trade's reported
+  // quantity and the current LTP since the user has presumably placed
+  // the same order via their broker app.
+  // See docs/MODEL_PORTFOLIO_ARCHITECTURE.md § 6g.
+  const [manuallyPlacedSymbols, setManuallyPlacedSymbols] = useState({});
+  const [manualPlacementInFlight, setManualPlacementInFlight] = useState(null);
+  const markRowAsManuallyPlaced = useCallback(
+    async item => {
+      if (!modelPortfolioModelId || !item?.symbol) {
+        Toast.show({
+          type: 'error',
+          text1: 'Cannot record placement',
+          text2: 'Missing rebalance reference. Please retry from the portfolio.',
+          visibilityTime: 4000,
+        });
+        return;
+      }
+      try {
+        setManualPlacementInFlight(item.symbol);
+        const ltp = getLTPForSymbol(item.symbol);
+        await axios.put(
+          `${server.server.baseUrl}api/model-portfolio-db-update/manual-placement`,
+          {
+            userEmail,
+            modelId: modelPortfolioModelId,
+            modelName: storeModalName,
+            user_broker: broker || 'DummyBroker',
+            symbol: item.symbol,
+            exchange: item.exchange,
+            transactionType: item.orderType,
+            actualQty: Number(item.qty),
+            actualPrice: Number.isFinite(ltp) && ltp > 0 ? Number(ltp) : null,
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Advisor-Subdomain':
+                configData?.config?.REACT_APP_HEADER_NAME ||
+                configData?.subdomain ||
+                getAdvisorSubdomain(),
+              'aq-encrypted-key': generateToken(
+                Config.REACT_APP_AQ_KEYS,
+                Config.REACT_APP_AQ_SECRET,
+              ),
+            },
+          },
+        );
+        setManuallyPlacedSymbols(prev => ({...prev, [item.symbol]: true}));
+        // Refresh the repair list so the row vanishes on next render.
+        if (typeof getRebalanceRepair === 'function') {
+          getRebalanceRepair();
+        }
+        portfolioEvents.emit(PORTFOLIO_EVENTS.HOLDINGS_REFRESH, {
+          userEmail,
+          modelName: storeModalName,
+          broker,
+        });
+        Toast.show({
+          type: 'success',
+          text1: 'Marked as placed',
+          text2: `${item.symbol} recorded as manually placed.`,
+          visibilityTime: 3000,
+        });
+      } catch (e) {
+        console.error(
+          '[RebalanceModal manual-placement] error:',
+          e?.response?.data || e?.message,
+        );
+        Toast.show({
+          type: 'error',
+          text1: 'Could not save',
+          text2:
+            e?.response?.data?.message ||
+            e?.message ||
+            'Try again in a moment.',
+          visibilityTime: 4000,
+        });
+      } finally {
+        setManualPlacementInFlight(null);
+      }
+    },
+    [
+      modelPortfolioModelId,
+      userEmail,
+      storeModalName,
+      broker,
+      configData,
+      getLTPForSymbol,
+      getRebalanceRepair,
+    ],
+  );
+
+  // Tap handler for the cautionary / insufficient-funds chip. Two-step
+  // confirm so a fat-finger tap doesn't silently flip the row.
+  const promptMarkAsManuallyPlaced = useCallback(
+    item => {
+      const isCautionary = isCautionaryListingMessage(item);
+      const reason = isCautionary
+        ? 'Cautionary listing — this stock cannot be auto-placed.'
+        : isInsufficientFundsMessage(item)
+        ? 'Insufficient funds when last attempted.'
+        : 'Order was rejected on the last attempt.';
+      Alert.alert(
+        `${item.symbol} · ${item.orderType}`,
+        `${reason}\n\nPlace this order via your broker app first, then tap "Mark as Placed" to record it. Quantity ${item.qty} @ current LTP will be saved.`,
+        [
+          {text: 'Cancel', style: 'cancel'},
+          {
+            text: 'Mark as Placed',
+            style: 'default',
+            onPress: () => markRowAsManuallyPlaced(item),
+          },
+        ],
+      );
+    },
+    [markRowAsManuallyPlaced],
+  );
 
   return (
     <Modal transparent={true} visible={visible} onRequestClose={handleClose}>
@@ -2528,6 +2708,46 @@ const RebalanceModal = ({
 };
 
 const styles = StyleSheet.create({
+  // Repair-mode chip on individual trade rows. See § 6g.
+  chipBase: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  chipText: {
+    fontSize: 10,
+    fontFamily: 'Poppins-Medium',
+    color: '#9A3412',
+  },
+  chipTextDone: {
+    color: '#166534',
+  },
+  // Cautionary listing — yellow/amber to match RecommendationSuccessModal.
+  chipCautionary: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D',
+  },
+  // Insufficient funds last time — softer red.
+  chipLowFunds: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FCA5A5',
+  },
+  // Partial fill last time — neutral gray-amber.
+  chipPartial: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D',
+  },
+  // Once user has marked the row manually placed.
+  chipDone: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#86EFAC',
+  },
   modalOverlay: {
     flex: 1,
     alignItems: 'center',

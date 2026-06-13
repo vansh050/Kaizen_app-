@@ -1282,7 +1282,7 @@ export function AngleOneTpinModal({
       <input type="hidden" name="ReqId" value="${edisData?.ReqId || ''}" />
       <input type="hidden" name="Version" value="1.1" />
       <input type="hidden" name="TransDtls" value="${edisData?.TransDtls || ''}" />
-      <input type="hidden" name="returnURL" value="${Config.REACT_APP_WEBSITE_URL || 'https://kaizenalpha.in'}/stock-recommendation" />
+      <input type="hidden" name="returnURL" value="${Config.REACT_APP_WEBSITE_URL || 'https://prod.alphaquark.in'}/stock-recommendation" />
       <input id="submitBtn" type="submit" />
     </form>
   </body>

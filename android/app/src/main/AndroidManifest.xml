@@ -48,6 +48,19 @@
                     android:host="test.alphaquark.in"
                     android:pathPrefix="/subscriptions" />
             </intent-filter>
+
+            <!-- Custom scheme matches REACT_APP_DEEP_LINK_SCHEME in .env.
+                 Consumed by PayUService (payment return URL) and
+                 ZerodhaOAuthService (OAuth WebView close trigger). Without
+                 this filter the OS has no app to hand off kaizenapp:// URLs,
+                 so payment success and Zerodha login silently fail to
+                 return to the app. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="kaizenapp" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

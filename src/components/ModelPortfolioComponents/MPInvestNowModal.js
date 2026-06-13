@@ -54,6 +54,11 @@ import {
   CFSubscriptionSession,
 } from 'cashfree-pg-api-contract';
 import {
+  getCashfreeEnvironment,
+  isInstallSourceError,
+  friendlyPaymentError,
+} from '../../utils/cashfreeEnv';
+import {
   CashFreeOneTimePayment,
   CashFreeRecurringPayment,
 } from '../../FunctionCall/services/CashFreeOneTimePayment';
@@ -1336,10 +1341,11 @@ const MPInvestNowModal = ({
         },
       });
 
-      // Use environment based on .env configuration
-      const cfEnvironment = Config.REACT_APP_ENV === 'production'
-        ? CFEnvironment.PRODUCTION
-        : CFEnvironment.SANDBOX;
+      // Single source of truth for env selection (utils/cashfreeEnv.js):
+      // honours REACT_APP_CASHFREE_ENV override, SANDBOX in Metro debug,
+      // else REACT_APP_ENV. Keeps MP in lockstep with CoursePurchaseSheet /
+      // BuyWebinarTicketSheet so the install-source rule is applied uniformly.
+      const cfEnvironment = getCashfreeEnvironment();
 
       const session = new CFSession(
         paymentSessionId,
@@ -1441,12 +1447,22 @@ const MPInvestNowModal = ({
         // Start polling in background after initiating payment
         startBackgroundPolling();
       } catch (sdkError) {
+        // doPayment throws synchronously when CashFree's native AAR blocks the
+        // build (PRODUCTION install-source check fails on sideloaded APKs —
+        // adb install / manual tap via com.google.android.packageinstaller).
+        // Stop the background poll (no order was ever opened) and show the
+        // actionable "install from Play Store" message instead of leaving the
+        // spinner running for the full ~5-min poll. See utils/cashfreeEnv.js.
         pollingShouldStopRef.current = true;
         console.error('[OneTime] SDK doPayment error:', sdkError);
+        setPaymentPollingMessage('');
         setLoading(false);
         setShowPaymentFail(true);
         CFPaymentGatewayService.removeCallback();
         CFPaymentGatewayService.removeEventSubscriber();
+        if (isInstallSourceError(sdkError)) {
+          Alert.alert('Payment unavailable', friendlyPaymentError(sdkError));
+        }
       }
     } catch (err) {
       setLoading(false);
@@ -1640,21 +1656,23 @@ const MPInvestNowModal = ({
       const session = new CFSubscriptionSession(
         subsSessionId,
         subscriptionId,
-        CFEnvironment.PRODUCTION,
+        getCashfreeEnvironment(),
       );
 
       CFPaymentGatewayService.doSubscriptionPayment(session);
     } catch (err) {
+      // doSubscriptionPayment throws synchronously on the same native
+      // install-source block as the one-time path. Surface the actionable
+      // Play-Store message rather than a generic "Failed to initialize".
       setLoadingmp(false);
+      const message = isInstallSourceError(err)
+        ? friendlyPaymentError(err)
+        : err?.message || 'Failed to initialize payment. Please try again.';
       Alert.alert(
-        'Error',
-        err?.message || 'Failed to initialize payment. Please try again.',
+        isInstallSourceError(err) ? 'Payment unavailable' : 'Error',
+        message,
       );
-      console.error(
-        'Error',
-        err?.message || 'Failed to initialize payment. Please try again.',
-      );
-      console.error('Payment failed to initialize:', err.response);
+      console.error('[CF Recurring] Payment failed to initialize:', err?.message, err.response);
     }
   };
 

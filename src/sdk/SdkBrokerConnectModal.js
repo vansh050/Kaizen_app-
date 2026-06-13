@@ -35,7 +35,7 @@ import Config from 'react-native-config';
 
 const BROKER_REDIRECT_URL =
   Config?.REACT_APP_BROKER_CONNECT_REDIRECT_URL ||
-  'https://kaizenalpha.in/stock-recommendation';
+  'https://prod.alphaquark.in/stock-recommendation';
 
 // Brokers where the apiKey/secret is the ADVISOR'S shared key (read
 // from the app's .env, mirroring legacy ZerodhaConnectUI behaviour),

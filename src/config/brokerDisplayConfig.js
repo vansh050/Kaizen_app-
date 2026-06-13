@@ -71,6 +71,21 @@ export const brokerDisplayConfig = [
     key: 'Axis Securities',
     logo: require('../assets/axis.png'),
   },
+  {
+    name: 'IIFL Securities',
+    key: 'IIFL',
+    logo: require('../assets/iifl.png'),
+  },
+  {
+    name: 'Arihant Capital',
+    key: 'Arihant Capital',
+    logo: require('../assets/arihant.png'),
+  },
+  {
+    name: 'DefinEdge',
+    key: 'DefinEdge Securities',
+    logo: require('../assets/definedge.png'),
+  },
 ];
 
 export default brokerDisplayConfig;

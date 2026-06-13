@@ -58,6 +58,7 @@ import notifee, {
   AuthorizationStatus,
   AndroidStyle,
 } from '@notifee/react-native';
+import WebinarReminderHandler from '../../FunctionCall/services/WebinarReminderHandler';
 import { ActivityIndicator } from 'react-native';
 
 import server from '../../utils/serverConfig';
@@ -82,7 +83,7 @@ import ModelPortfolioScreen from '../Drawer/ModelPortfolioScreen';
 import UpdateAppModal, {checkForAppUpdate} from '../../UpdateAppModal';
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get('window');
-const selectedVariant = Config?.APP_VARIANT || 'kaizenalpha';
+const selectedVariant = Config?.APP_VARIANT || 'rgxresearch';
 
 const pdfcicon = require('../../assets/pdf.png');
 
@@ -125,6 +126,7 @@ const HomeScreen = ({ }) => {
     planList,
     configData,
     userDetails,
+    modelPortfolioRepairTrades,
   } = useTrade();
   // console.log('configData', configData);
 
@@ -189,47 +191,13 @@ const HomeScreen = ({ }) => {
 
   const animation = useRef(new Animated.Value(0)).current;
 
+  // modelPortfolioRepairTrades is sourced from TradeContext (auto-fetched
+  // alongside getModelPortfolioStrategyDetails). The previous local useState
+  // + getRebalanceRepair fetch was removed 2026-05-12 — the local state was
+  // shadowing the context-destructured value at line 128, causing two
+  // redundant /rebalance/get-repair calls per portfolio load and bypassing
+  // the centralisation. See docs/MODEL_PORTFOLIO_ARCHITECTURE.md § 6g.
   const modelNames = modelPortfolioStrategyfinal?.map(item => item?.model_name);
-  const [modelPortfolioRepairTrades, setModelPortfolioRepairTrades] = useState(
-    [],
-  );
-  const getRebalanceRepair = () => {
-    let repairData = JSON.stringify({
-      modelName: modelNames,
-      advisor: modelPortfolioStrategyfinal[0]['advisor'],
-      userEmail: userEmail,
-      userBroker: broker,
-    });
-    let config2 = {
-      method: 'post',
-      url: `${server.ccxtServer.baseUrl}rebalance/get-repair`,
-
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME,
-        'aq-encrypted-key': generateToken(
-          Config.REACT_APP_AQ_KEYS,
-          Config.REACT_APP_AQ_SECRET,
-        ),
-      },
-
-      data: repairData,
-    };
-    axios
-      .request(config2)
-      .then(response => {
-        setModelPortfolioRepairTrades(response.data.models);
-      })
-      .catch(error => {
-        console.log(error);
-      });
-  };
-  // console.log("Broker value being sent:", broker);
-  useEffect(() => {
-    if (modelPortfolioStrategyfinal.length !== 0) {
-      getRebalanceRepair();
-    }
-  }, [modelPortfolioStrategyfinal]);
 
 
   const filteredAndSortedStrategies = [...(modelPortfolioStrategyfinal || [])]
@@ -336,6 +304,42 @@ const HomeScreen = ({ }) => {
         );
 
         //  console.log('User data posted successfully:', response.data); // Alert as a success message or use any other notification library
+
+        // Event Fanout Phase C (2026-05-18) — also register with the Node
+        // backend's per-advisor user_devices collection so the new push
+        // worker (CronJob/pushDelivery.js in aq_backend_github) can fan
+        // out SDK events (broker.expired, advice.sent, etc.) to this
+        // device. Parallel to the existing /comms/fcm/save call above
+        // — the two paths serve different push sources for the same
+        // device and we want both wired. Best-effort: failure here
+        // doesn't break the existing fcm/save success.
+        try {
+          await axios.post(
+            `${server.server.baseUrl}api/devices/register`,
+            {
+              user_email: user.email,
+              app: 'alphab2b',
+              platform: Platform.OS, // 'ios' | 'android'
+              device_token: fcmToken.toString(),
+            },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME,
+                'aq-encrypted-key': generateToken(
+                  Config.REACT_APP_AQ_KEYS,
+                  Config.REACT_APP_AQ_SECRET,
+                ),
+              },
+            },
+          );
+        } catch (registerErr) {
+          // Best-effort; ccxt-india /comms/fcm/save is still the primary path
+          console.warn(
+            '[devices/register] best-effort registration failed:',
+            registerErr?.message || registerErr,
+          );
+        }
       }
     } catch (error) { }
   };
@@ -387,7 +391,7 @@ const HomeScreen = ({ }) => {
         if (updateCheckDone.current) return;
 
         try {
-          const result = await checkForAppUpdate();
+          const result = await checkForAppUpdate(config?.latestAppVersion);
           if (result.updateAvailable) {
             setShowUpdateModal(true);
             updateCheckDone.current = true;
@@ -488,6 +492,17 @@ const HomeScreen = ({ }) => {
       }
 
       isNotificationTriggered.current = Date.now(); // ✅ Store last notification timestamp
+
+      // Webinar reminders (T-1hr / T-15min / T-1min push from
+      // CronLiveClassReminders) — data.type === 'live_class_reminder'.
+      // Render via notifee on our dedicated channel; skip the existing
+      // notificationType switch so we don't fall into the default
+      // "Unrecognized" warn branch.
+      if (WebinarReminderHandler.matches(remoteMessage)) {
+        await WebinarReminderHandler.displayInForeground(remoteMessage);
+        setTimeout(() => { isNotificationTriggered.current = false; }, 500);
+        return;
+      }
 
       handleNotification(remoteMessage);
 

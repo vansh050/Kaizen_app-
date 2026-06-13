@@ -28,7 +28,9 @@ import { useTrade } from '../screens/TradeContext';
 import { useConfig } from '../context/ConfigContext';
 import Toast from 'react-native-toast-message';
 import { validateStockExchanges, getPublisherWebViewBaseUrl, resolveZerodhaSymbol } from '../utils/brokerPublisher';
+import { computeTradeVariant } from '../utils/tradeVariant';
 import useZerodhaSymbolMap from '../hooks/useZerodhaSymbolMap';
+import useKitePublisherPolling from '../hooks/useKitePublisherPolling';
 
 const ReviewZerodhaTradeModal = ({
   visible,
@@ -304,6 +306,35 @@ console.log('Review Modal in AsyncStorage:', storedCartItems);
   const [zerodhaStatus, setZerodhaStatus] = useState(null);
   const [zerodhaRequestToken, setZerodhaRequestToken] = useState(null);
   const [zerodhaRequestType, setZerodhaRequestType] = useState(null);
+
+  // Publisher order-book polling fallback for Kite Publisher WebView
+  // callback misses. Canonical implementation lives in
+  // `src/hooks/useKitePublisherPolling.js` — see
+  // docs/REBALANCING.md § Kite Publisher polling fallback. Three known
+  // failure scenarios: cross-domain 302 loss, OS-suspended WebView
+  // during broker-app authentication, and AsyncStorage hydration races.
+  // For Zerodha, jwtToken is the access_token used by fetchOrderBook;
+  // other broker creds are passed through for shape parity. The hook
+  // drives the same state transition as `handleWebViewNavigationStateChange`
+  // below, so the `[zerodhaStatus, zerodhaRequestType]` useEffect that
+  // calls checkZerodhaStatus runs identically through both channels.
+  const { start: startKitePolling, stop: stopKitePolling } = useKitePublisherPolling({
+    broker,
+    brokerCreds: {
+      clientCode: userDetails?.clientCode,
+      apiKey: userDetails?.apiKey,
+      jwtToken,
+      secretKey: userDetails?.secretKey,
+      sid: userDetails?.sid,
+      serverId: userDetails?.serverId,
+    },
+    configData,
+    onPublisherSettled: () => {
+      setZerodhaStatus('success');
+      setZerodhaRequestType('basket');
+    },
+  });
+
   const handleWebViewNavigationStateChange = (newNavState) => {
     // Handle navigation state changes, e.g., success/failure redirects
     const { url } = newNavState;
@@ -412,13 +443,27 @@ console.log('Review Modal in AsyncStorage:', storedCartItems);
     }
 
     const storageKey = "stockDetailsZerodhaOrder";
+    // Belt-and-braces variant tagging — `StockAdvices.handleTrade` already tags
+    // variant before passing stockDetails into this modal, but defensive
+    // tagging here covers (a) any future caller that doesn't pre-tag,
+    // (b) the recovery path where this modal's AsyncStorage write is the
+    // only persistence (e.g. user kills app mid-WebView, comes back, and
+    // checkZerodhaStatus rehydrates from disk). Each item keeps its
+    // upstream-supplied variant when present; otherwise the modal's own
+    // submit-time computation fills in. See docs/APP_ARCHITECTURE.md
+    // § 4.5.2 Trade variant field.
+    const fallbackVariant = computeTradeVariant(allowAfterHoursOrders);
+    const taggedStockDetails = (stockDetails || []).map(s => ({
+      ...s,
+      variant: s?.variant || fallbackVariant,
+    }));
     try {
       // Clear the existing value
       await AsyncStorage.removeItem(storageKey);
-  
-      // Set the new value
-      await AsyncStorage.setItem(storageKey, JSON.stringify(stockDetails));
-      console.log("Updated stockDetailsZerodhaOrder with:", stockDetails);
+
+      // Set the new value (variant-tagged)
+      await AsyncStorage.setItem(storageKey, JSON.stringify(taggedStockDetails));
+      console.log("Updated stockDetailsZerodhaOrder with:", taggedStockDetails);
     } catch (error) {
       console.error("Error updating stockDetailsZerodhaOrder:", error);
     }
@@ -555,9 +600,12 @@ console.log('Review Modal in AsyncStorage:', storedCartItems);
       setHtmlContent(htmlContent);
       if (skipToWebView) {
         setWebView(true);
+        // Start client-side order-book polling as the WebView-callback-missed
+        // fallback. See docs/REBALANCING.md § Kite Publisher polling fallback.
+        startKitePolling();
       }
     }
-  }, [htmlContent, skipToWebView]);
+  }, [htmlContent, skipToWebView, startKitePolling]);
 
   const generateHtmlForm = async (basket, apiKey) => {
     return `<html>
@@ -599,14 +647,20 @@ console.log('Review Modal in AsyncStorage:', storedCartItems);
     
 
     const checkZerodhaStatus = async () => {
+      // Stop the publisher polling — either the WebView callback fired or
+      // polling already settled. Idempotent: if polling already stopped,
+      // this is a no-op. Prevents a late poll tick from re-firing
+      // onPublisherSettled while we're already processing.
+      stopKitePolling();
+
       try {
         const { zerodhaStockDetails, zerodhaAdditionalPayload } = await fetchData();
         const currentISTDateTime = new Date();
         const istDatetime = moment(currentISTDateTime).format();
-        
+
         console.log('hereeeee');
         console.log('Zerodha Stock CheckzerodhaStatus:', zerodhaStockDetails, "and ", zerodhaAdditionalPayload, "jwtToken:", jwtToken);
-        
+
         if (zerodhaStatus === "success" && zerodhaRequestType === "basket") {
           try {
             // Use Publisher flow - call publisher/record-orders endpoint

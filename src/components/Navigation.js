@@ -51,6 +51,8 @@ import {
   AlignEndHorizontal,
   Clipboard,
   User,
+  Video,
+  BookOpen,
 } from 'lucide-react-native';
 import HomeScreen from '../screens/Home/HomeScreen';
 import PhoneNumberScreen from '../screens/Authentication/PhoneNumberScreen';
@@ -73,6 +75,8 @@ import OrderScreen from '../screens/Home/OrderScreen';
 import WatchlistScreen from '../screens/Home/WatchlistScreen';
 import WishSearch from '../screens/Home/WishSearch';
 import CustomToolbar from './CustomToolbar';
+import NatificationServiceNav from './NatificationServiceNav';
+import {useConfig} from '../context/ConfigContext';
 import HistoryScreen from '../screens/Home/HistoryScreen';
 import AdviceScreen from '../screens/Home/HomeScreen';
 import PaymentHistoryScreen from '../screens/Drawer/PaymentHistoryScreen';
@@ -122,6 +126,10 @@ import AccountSettingsScreen from '../screens/Home/AccountSettingsScreen';
 import KnowledgeHub from './HomeScreenComponents/KnowledgeHub';
 import BespokePerformanceScreen from '../screens/Drawer/BespokePerformanceScreen';
 import ChangeAdvisor from '../screens/AccountSettingScreen/ChangeAdvisor';
+import WebinarsListScreen from '../screens/Courses/WebinarsListScreen';
+import WebinarDetailScreen from '../screens/Courses/WebinarDetailScreen';
+import MyCoursesScreen from '../screens/Courses/MyCoursesScreen';
+import CourseDetailScreen from '../screens/Courses/CourseDetailScreen';
 import BrokerSelectionScreen from '../screens/Broker/BrokerSelectionScreen';
 import BrokerAuthScreen from '../screens/Broker/BrokerAuthScreen';
 import BrokerCredentialScreen from '../screens/Broker/BrokerCredentialScreen';
@@ -159,9 +167,9 @@ const getBottomSheetPosition = (insets) => {
   );
 };
 
-const selectedVariant = Config?.APP_VARIANT || 'kaizenalpha'; // Default to "kaizenalpha" if not set
-// Ensure the variant exists in APP_VARIANTS, otherwise use 'kaizenalpha'
-const validVariant = APP_VARIANTS[selectedVariant] ? selectedVariant : 'kaizenalpha';
+const selectedVariant = Config?.APP_VARIANT || 'rgxresearch'; // Default to "rgxresearch" if not set
+// Ensure the variant exists in APP_VARIANTS, otherwise use 'rgxresearch'
+const validVariant = APP_VARIANTS[selectedVariant] ? selectedVariant : 'rgxresearch';
 const {
   logo: LogoComponent,
   themeColor,
@@ -480,6 +488,9 @@ const currentName = currentTabRoute?.name || "";
 
 const CustomDrawerContent = props => {
   const {configData} = useTrade();
+  const appConfig = useConfig();
+  const coursesEnabled = !!appConfig?.coursesEnabled;
+  const webinarsEnabled = !!appConfig?.webinarsEnabled;
   const navigation = useNavigation();
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
@@ -887,6 +898,37 @@ const CustomDrawerContent = props => {
             )}
           />
 
+          {/* Courses (2026-05-24) — viewer-only catalog. Gated per-advisor
+              by AppConfigContext.coursesEnabled (mirrors web's
+              AppConfigContext default-false → AdvisorConfig.courses_enabled).
+              Routes resolve to the root Stack.Screen registered in Phase
+              2e; entries hide entirely when the flag is off. */}
+          {coursesEnabled && (
+            <CustomDrawerItem
+              label="Courses"
+              isSelected={
+                props.state.routeNames[props.state.index] === 'MyCourses'
+              }
+              onPress={() => handleDrawerItemPress('MyCourses')}
+              IconComponent={({color, style}) => (
+                <BookOpen color={color} style={style} />
+              )}
+            />
+          )}
+
+          {webinarsEnabled && (
+            <CustomDrawerItem
+              label="Webinars"
+              isSelected={
+                props.state.routeNames[props.state.index] === 'WebinarsList'
+              }
+              onPress={() => handleDrawerItemPress('WebinarsList')}
+              IconComponent={({color, style}) => (
+                <Video color={color} style={style} />
+              )}
+            />
+          )}
+
           {false && (
             <CustomDrawerItem
               label="Ignored Trades"
@@ -1013,7 +1055,14 @@ const DrawerNavigator = () => {
       drawerContent={props => <CustomDrawerContent {...props} />}
       defaultStatus="closed"
       screenOptions={{
-        swipeEnabled: false,
+        // D17 (web-parity): the right drawer was unreachable (swipeEnabled:false + no
+        // openDrawer() caller), so parity surfaces dropped into it (PaymentHistory /
+        // MPPerformance) couldn't be found. Re-enabled via right-edge swipe. Watch for
+        // gesture conflicts with horizontal scroll/tab views (the likely original reason
+        // it was off); the HomeScreen NBA card (P3) remains the primary discovery path.
+        // See docs/WEB_PARITY_MIGRATION_2026-06.md §5.1 (D17).
+        swipeEnabled: true,
+        swipeEdgeWidth: 40,
         drawerPosition: 'right',
         drawerStyle: {
           backgroundColor: 'transparent',
@@ -1087,7 +1136,15 @@ const Navigation = ({userEmail, isAuthenticated}) => {
     String(Config?.REACT_APP_SDK_BROKER_TEST_FIRST || '').toLowerCase() === 'true';
 
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      ref={(nav) => {
+        // Expose the imperative navigator to index.js so notification-tap
+        // handlers (FCM background + cold-start + notifee tap events) can
+        // deep-link. Without this hookup, NatificationServiceNav.navigate
+        // silently no-ops with "Navigator is not defined yet."
+        if (nav) NatificationServiceNav.setTopLevelNavigator(nav);
+      }}
+    >
       <Stack.Navigator
         initialRouteName={sdkBrokerTestFirst ? 'SdkBrokerTest' : 'Splash'}
         screenOptions={{headerShown: false, animation: 'none'}}>
@@ -1224,6 +1281,26 @@ const Navigation = ({userEmail, isAuthenticated}) => {
           name="HomeS"
           component={DrawerNavigator}
           options={{headerShown: false}}
+        />
+        <Stack.Screen
+          name="WebinarsList"
+          component={WebinarsListScreen}
+          options={{headerShown: true, title: 'Live Webinars'}}
+        />
+        <Stack.Screen
+          name="WebinarDetail"
+          component={WebinarDetailScreen}
+          options={{headerShown: true, title: 'Webinar'}}
+        />
+        <Stack.Screen
+          name="MyCourses"
+          component={MyCoursesScreen}
+          options={{headerShown: true, title: 'Courses'}}
+        />
+        <Stack.Screen
+          name="CourseDetail"
+          component={CourseDetailScreen}
+          options={{headerShown: true, title: 'Course'}}
         />
         <Stack.Screen
           name="Broker Setting"

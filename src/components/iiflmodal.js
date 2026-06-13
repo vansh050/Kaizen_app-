@@ -20,6 +20,7 @@ import Config from 'react-native-config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {useTrade} from '../screens/TradeContext';
 import {getAdvisorSubdomain} from '../utils/variantHelper';
+import server from '../utils/serverConfig';
 import {
   useSdkBridge,
   sdkConnectBroker,
