@@ -24,20 +24,25 @@ import {
     StyleSheet,
     TouchableOpacity,
 } from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
 import { Bell } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 
 const KAIZEN_LOGO = require('../assets/logo.png');
 
+// Kaizen Alpha brand palette (sourced from the web landing page
+// /Users/pratik/PycharmProjects/kaizen_alpha/src/SeperateDesigns/
+// LandingPageDesigns/KaizenLandingPage.jsx).
 const PURPLE = '#A199FF';
 const PURPLE_DARK = '#8B82F0';
 const NEAR_BLACK = '#0A0A0A';
 const DARK = '#1A1A1A';
-const TEXT_MUTED = '#7A7A7A';
-const SURFACE_SUBTLE = '#F5F4FF';
-const BORDER = 'rgba(161,153,255,0.18)';
-const DANGER = '#E5484D';
-const SUCCESS = '#22C55E';
+const TEXT_PRIMARY = '#FFFFFF';
+const TEXT_MUTED = 'rgba(255,255,255,0.55)';
+const SURFACE_SUBTLE = 'rgba(255,255,255,0.06)';
+const BORDER = 'rgba(255,255,255,0.10)';
+const DANGER = '#FF6B72';
+const SUCCESS = '#3DFFA0';
 
 const SAMPLE_TICKERS = [
     { name: 'Nifty 50', value: '23,995.7', change: '▼ 97.00 (0.40%)', dir: 'down' },
@@ -111,7 +116,12 @@ const AppHeader = ({ userEmail = '', userName = '', config, tickers }) => {
     };
 
     return (
-        <View style={styles.header}>
+        <LinearGradient
+            colors={[NEAR_BLACK, DARK, '#221E5C']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.header}
+        >
             <View style={styles.row1}>
                 <View style={styles.logoWrap}>
                     <Image
@@ -131,16 +141,22 @@ const AppHeader = ({ userEmail = '', userName = '', config, tickers }) => {
                         style={styles.iconCircle}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                        <Bell size={18} color={DARK} strokeWidth={1.8} />
+                        <Bell size={18} color={TEXT_PRIMARY} strokeWidth={1.8} />
                         <View style={styles.notifDot} />
                     </TouchableOpacity>
                     <TouchableOpacity
                         activeOpacity={0.85}
                         onPress={onAvatarPress}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        style={styles.avatar}
                     >
-                        <Text style={styles.avatarText}>{initials}</Text>
+                        <LinearGradient
+                            colors={[PURPLE, PURPLE_DARK]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.avatar}
+                        >
+                            <Text style={styles.avatarText}>{initials}</Text>
+                        </LinearGradient>
                     </TouchableOpacity>
                 </View>
             </View>
@@ -167,18 +183,15 @@ const AppHeader = ({ userEmail = '', userName = '', config, tickers }) => {
                     </View>
                 ))}
             </ScrollView>
-        </View>
+        </LinearGradient>
     );
 };
 
 const styles = StyleSheet.create({
     header: {
-        backgroundColor: '#FFFFFF',
         paddingHorizontal: 18,
         paddingTop: 8,
         paddingBottom: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: BORDER,
     },
     row1: {
         flexDirection: 'row',
@@ -192,11 +205,12 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 13,
+        backgroundColor: '#FFFFFF',
     },
     greeting: {
         fontSize: 16,
         fontWeight: '700',
-        color: NEAR_BLACK,
+        color: TEXT_PRIMARY,
     },
     subDate: {
         fontSize: 11,
@@ -223,7 +237,7 @@ const styles = StyleSheet.create({
         borderRadius: 4,
         backgroundColor: DANGER,
         borderWidth: 1.5,
-        borderColor: '#FFFFFF',
+        borderColor: NEAR_BLACK,
     },
     avatar: {
         width: 42,
@@ -231,7 +245,6 @@ const styles = StyleSheet.create({
         borderRadius: 21,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: PURPLE,
     },
     avatarText: {
         fontSize: 13,
@@ -259,7 +272,7 @@ const styles = StyleSheet.create({
     tickerVal: {
         fontSize: 14,
         fontWeight: '700',
-        color: NEAR_BLACK,
+        color: TEXT_PRIMARY,
         marginVertical: 3,
         letterSpacing: -0.2,
         fontVariant: ['tabular-nums'],

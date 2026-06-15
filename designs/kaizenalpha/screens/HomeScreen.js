@@ -19,7 +19,7 @@
  */
 
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StatusBar, StyleSheet } from 'react-native';
 
 import DefaultHomeScreen from '../../default/screens/HomeScreen';
 import AppHeader from './_AppHeader';
@@ -50,6 +50,14 @@ const HomeScreenPresentation = ({ home }) => {
 
     return (
         <View style={styles.root}>
+            {/* Status bar tinted to the dark header gradient so the system
+                clock/battery icons stop clashing on the previous blue
+                default; light icons against the near-black brand top. */}
+            <StatusBar
+                barStyle="light-content"
+                backgroundColor="#0A0A0A"
+                translucent={false}
+            />
             {!overlayOpen && (
                 <AppHeader
                     userEmail={userEmail}
@@ -66,8 +74,11 @@ const HomeScreenPresentation = ({ home }) => {
 };
 
 const styles = StyleSheet.create({
-    root: { flex: 1, backgroundColor: '#FFFFFF' },
-    body: { flex: 1 },
+    // Brand near-black so the safe-area gap above the gradient header
+    // (and the small space behind any rounded corners) reads as part of
+    // the same dark top, not as a stray white band.
+    root: { flex: 1, backgroundColor: '#0A0A0A' },
+    body: { flex: 1, backgroundColor: '#F0F0F0' },
 });
 
 export default HomeScreenPresentation;
