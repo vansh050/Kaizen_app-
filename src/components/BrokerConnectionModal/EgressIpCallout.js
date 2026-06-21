@@ -58,6 +58,7 @@ import server from '../../utils/serverConfig';
 import {generateToken} from '../../utils/SecurityTokenManager';
 import {getAdvisorSubdomain} from '../../utils/variantHelper';
 import LinkifiedUrl from '../../UIComponents/BrokerConnectionUI/HelpUI/LinkifiedUrl';
+import {useColors} from '../../theme/useColors';
 
 // Brokers requiring per-customer IP whitelisting. Partners short-
 // circuit to null without hitting /egress/me. Keep keys in sync with
@@ -135,6 +136,12 @@ const EgressIpCallout = ({
   const brokerDisplay = BROKER_DISPLAY_NAMES[brokerKey] || brokerKey;
   const brokerDevPortal = BROKER_DEV_PORTAL_URLS[brokerKey];
   const brokerHint = BROKER_WHITELIST_HINT[brokerKey];
+
+  // Brand the genuine action elements (primary CTA + ack checkbox) to the
+  // running white-label tenant. The semantic state panels (info/warning/
+  // error) intentionally keep their conventional blue/amber/red.
+  const colors = useColors();
+  const brand = colors?.brand?.primary || '#2563EB';
 
   const [loading, setLoading] = useState(true);
   const [brokerState, setBrokerState] = useState(null);
@@ -385,7 +392,10 @@ const EgressIpCallout = ({
               <View
                 style={[
                   styles.checkbox,
-                  acknowledged && styles.checkboxChecked,
+                  acknowledged && [
+                    styles.checkboxChecked,
+                    {backgroundColor: brand, borderColor: brand},
+                  ],
                   flashAck && !acknowledged && styles.checkboxFlash,
                 ]}>
                 {acknowledged && <Text style={styles.checkboxMark}>✓</Text>}
@@ -463,7 +473,11 @@ const EgressIpCallout = ({
           <TouchableOpacity
             onPress={handleClaim}
             disabled={claiming}
-            style={[styles.primaryButton, claiming && {opacity: 0.6}]}
+            style={[
+              styles.primaryButton,
+              {backgroundColor: brand},
+              claiming && {opacity: 0.6},
+            ]}
             activeOpacity={0.8}>
             {claiming ? (
               <ActivityIndicator size="small" color="#fff" />
@@ -529,7 +543,10 @@ const EgressIpCallout = ({
               <View
                 style={[
                   styles.checkbox,
-                  acknowledged && styles.checkboxChecked,
+                  acknowledged && [
+                    styles.checkboxChecked,
+                    {backgroundColor: brand, borderColor: brand},
+                  ],
                   flashAck && !acknowledged && styles.checkboxFlash,
                 ]}>
                 {acknowledged && <Text style={styles.checkboxMark}>✓</Text>}
