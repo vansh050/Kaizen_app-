@@ -340,6 +340,37 @@ export const ConfigProvider = ({ children }) => {
                         REACT_APP_BROKER_CONNECT_REDIRECT_URL: apiData.brokerConnectRedirectUrl || Config.REACT_APP_BROKER_CONNECT_REDIRECT_URL || '',
 
                         // ============================================================================
+                        // PER-TENANT CONFIG MIGRATED FROM .env → appadvisors (supportAQ-controlled)
+                        // ----------------------------------------------------------------------------
+                        // Each resolves `appadvisors value ?? .env fallback`, so a tenant's settings
+                        // can change from supportAQ App Advisors with NO app rebuild. The .env value
+                        // stays the bootstrap/offline fallback. Also written into the AsyncStorage
+                        // `@app:advisorConfig` sync block below so consumers reading
+                        // `configData.config.REACT_APP_*` (TradeContext) get the backend value too.
+                        // Stays in .env: REACT_APP_HEADER_NAME (subdomain — fetches THIS config),
+                        // REACT_APP_AQ_KEYS/SECRET (signs the fetch; secret), server base URLs,
+                        // APP_VARIANT (design), REACT_APP_FIREBASE_* (native), MARKET_WS_*.
+                        // ============================================================================
+                        REACT_APP_ADVISOR_SPECIFIC_TAG:
+                            apiData.advisorSpecificTag || apiData.apiKeys?.advisorSpecificTag || Config.REACT_APP_ADVISOR_SPECIFIC_TAG || '',
+                        REACT_APP_WHITE_LABEL_TEXT:
+                            apiData.whiteLabelText || apiData.appName || Config.REACT_APP_WHITE_LABEL_TEXT || '',
+                        REACT_APP_ADVISOR_SPECIFIER:
+                            apiData.advisorSpecifier || apiData.apiKeys?.advisorSpecifier || Config.REACT_APP_ADVISOR_SPECIFIER || 'RA',
+                        REACT_APP_RAZORPAY_LIVE_API_KEY:
+                            apiData.apiKeys?.razorpayKeyId || apiData.razorpayKey || Config.REACT_APP_RAZORPAY_LIVE_API_KEY || '',
+                        REACT_APP_DIGIO_CHECK:
+                            apiData.digioConfig?.digioCheck || apiData.digioCheck || Config.REACT_APP_DIGIO_CHECK || 'beforePayment',
+                        REACT_APP_ADVISOR_LOGO:
+                            apiData.advisorLogo || Config.REACT_APP_ADVISOR_LOGO || '',
+                        whiteLabelText:
+                            apiData.whiteLabelText || apiData.appName || Config.REACT_APP_WHITE_LABEL_TEXT || initialConfig.appName,
+                        advisorSpecifier:
+                            apiData.advisorSpecifier || apiData.apiKeys?.advisorSpecifier || Config.REACT_APP_ADVISOR_SPECIFIER || 'RA',
+                        advisorSpecificTag:
+                            apiData.advisorSpecificTag || apiData.apiKeys?.advisorSpecificTag || Config.REACT_APP_ADVISOR_SPECIFIC_TAG || '',
+
+                        // ============================================================================
                         // PAYMENT MODAL UI CUSTOMIZATION
                         // ============================================================================
                         paymentModal: {
@@ -450,6 +481,16 @@ export const ConfigProvider = ({ children }) => {
                                     REACT_APP_BROKER_CONNECT_REDIRECT_URL: newConfig.REACT_APP_BROKER_CONNECT_REDIRECT_URL,
                                     REACT_APP_ANGEL_ONE_API_KEY: newConfig.REACT_APP_ANGEL_ONE_API_KEY,
                                     REACT_APP_ZERODHA_API_KEY: newConfig.REACT_APP_ZERODHA_API_KEY,
+                                    // Per-tenant config migrated to appadvisors (see newConfig block
+                                    // above). Persisted so configData.config.REACT_APP_* (TradeContext)
+                                    // reads the backend value (?? .env). `|| stored.config?.X` guards
+                                    // against a transiently-empty API response blanking a good value.
+                                    REACT_APP_ADVISOR_SPECIFIC_TAG: newConfig.REACT_APP_ADVISOR_SPECIFIC_TAG || stored.config?.REACT_APP_ADVISOR_SPECIFIC_TAG,
+                                    REACT_APP_WHITE_LABEL_TEXT: newConfig.REACT_APP_WHITE_LABEL_TEXT || stored.config?.REACT_APP_WHITE_LABEL_TEXT,
+                                    REACT_APP_ADVISOR_SPECIFIER: newConfig.REACT_APP_ADVISOR_SPECIFIER || stored.config?.REACT_APP_ADVISOR_SPECIFIER,
+                                    REACT_APP_RAZORPAY_LIVE_API_KEY: newConfig.REACT_APP_RAZORPAY_LIVE_API_KEY || stored.config?.REACT_APP_RAZORPAY_LIVE_API_KEY,
+                                    REACT_APP_DIGIO_CHECK: newConfig.REACT_APP_DIGIO_CHECK || stored.config?.REACT_APP_DIGIO_CHECK,
+                                    REACT_APP_ADVISOR_LOGO: newConfig.REACT_APP_ADVISOR_LOGO || stored.config?.REACT_APP_ADVISOR_LOGO,
                                     // D3 / Codex T5: persist the parity flags into the same
                                     // AsyncStorage blob TradeContext reads, so useConfig() and
                                     // configData never disagree on a gate.
