@@ -113,9 +113,11 @@ const MPPerformanceScreen = ({route}) => {
   const [showPaymentFail, setShowPaymentFail] = useState(false);
   const [researchWebViewUrl, setResearchWebViewUrl] = useState(null);
 
+  // Overview first (index 0) so "View More" lands on Overview, not the
+  // subscriber-locked Portfolio tab.
   const [routes] = useState([
-    {key: 'portfolio', title: 'Portfolio'},
     {key: 'overview', title: 'OverView'},
+    {key: 'portfolio', title: 'Portfolio'},
     {key: 'research', title: 'Research'},
   ]);
 
@@ -579,18 +581,12 @@ const MPPerformanceScreen = ({route}) => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40}}
       >
-        {!globalConsent ? (
-          <PerformanceDisclaimer onAccept={handleConsentAccept} accentColor={mainColor} />
-        ) : (
-          <PerformanceChart
-            modelName={singleStrategyDetails?.model_name || modelName}
-            advisor={singleStrategyDetails?.advisor}
-          />
-        )}
+        {/* Overview (methodology) shown FIRST; performance + its consent
+            disclaimer moved to the bottom of this tab (see below). */}
         {(singleStrategyDetails?.definingUniverse ||
           singleStrategyDetails?.researchOverView ||
           singleStrategyDetails?.constituentScreening) && (
-          <View style={{marginTop: 24, backgroundColor: '#fafafa', borderRadius: 12, padding: 16}}>
+          <View style={{backgroundColor: '#fafafa', borderRadius: 12, padding: 16}}>
             <Text style={{fontFamily: 'Poppins-SemiBold', fontSize: 14, color: '#1a1a1a', marginBottom: 12}}>
               Methodology
             </Text>
@@ -632,6 +628,22 @@ const MPPerformanceScreen = ({route}) => {
             ) : null}
           </View>
         )}
+
+        {/* Performance section at the END of Overview — consent gate preserved:
+            the (now shorter) disclaimer must be accepted before the chart shows. */}
+        <View style={{marginTop: 24}}>
+          <Text style={{fontFamily: 'Poppins-SemiBold', fontSize: 14, color: '#1a1a1a', marginBottom: 12}}>
+            Performance
+          </Text>
+          {!globalConsent ? (
+            <PerformanceDisclaimer onAccept={handleConsentAccept} accentColor={mainColor} />
+          ) : (
+            <PerformanceChart
+              modelName={singleStrategyDetails?.model_name || modelName}
+              advisor={singleStrategyDetails?.advisor}
+            />
+          )}
+        </View>
       </ScrollView>
     </View>
   );
