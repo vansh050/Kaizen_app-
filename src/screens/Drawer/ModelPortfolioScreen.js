@@ -29,6 +29,7 @@ import {getAuth} from '@react-native-firebase/auth';
 import server from '../../utils/serverConfig';
 import {GitForkIcon} from 'lucide-react-native';
 import Config from 'react-native-config';
+import {getAdvisorSubdomain} from '../../utils/variantHelper';
 import {generateToken} from '../../utils/SecurityTokenManager';
 import MPCardBespoke from '../../components/ModelPortfolioComponents/MPCardBespoke';
 import RecommendationSuccessModal from '../../components/ModelPortfolioComponents/RecommendationSuccessModal';
@@ -144,7 +145,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
   }, [routes.length, index]);
 
   const [selectedPlanType, setSelectedPlanType] = useState(null);
-  const advisorTag = configData?.config?.REACT_APP_ADVISOR_SPECIFIC_TAG;
+  const advisorTag = configData?.config?.REACT_APP_ADVISOR_SPECIFIC_TAG || Config.REACT_APP_ADVISOR_SPECIFIC_TAG || getAdvisorSubdomain();
   const [openSuccessModal, setOpenSucessModal] = useState(false);
   const [paymentModal, setPaymentModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -168,7 +169,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
         {
           headers: {
             'Content-Type': 'application/json',
-            'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME,
+            'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || configData?.subdomain || getAdvisorSubdomain(),
             'aq-encrypted-key': generateToken(
               Config.REACT_APP_AQ_KEYS,
               Config.REACT_APP_AQ_SECRET,
@@ -194,7 +195,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
         {
           headers: {
             'Content-Type': 'application/json',
-            'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME,
+            'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || configData?.subdomain || getAdvisorSubdomain(),
             'aq-encrypted-key': generateToken(
               Config.REACT_APP_AQ_KEYS,
               Config.REACT_APP_AQ_SECRET,
@@ -220,7 +221,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
         {
           headers: {
             'Content-Type': 'application/json',
-            'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME,
+            'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || configData?.subdomain || getAdvisorSubdomain(),
             'aq-encrypted-key': generateToken(
               Config.REACT_APP_AQ_KEYS,
               Config.REACT_APP_AQ_SECRET,
@@ -253,7 +254,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
           {
             headers: {
               'Content-Type': 'application/json',
-              'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME,
+              'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || configData?.subdomain || getAdvisorSubdomain(),
               'aq-encrypted-key': generateToken(
                 Config.REACT_APP_AQ_KEYS,
                 Config.REACT_APP_AQ_SECRET,
@@ -421,7 +422,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
       url: `${server.server.baseUrl}api/all-clients/user/${userEmail}`,
       headers: {
         'Content-Type': 'application/json',
-        'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME,
+        'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || configData?.subdomain || getAdvisorSubdomain(),
         'aq-encrypted-key': generateToken(
           Config.REACT_APP_AQ_KEYS,
           Config.REACT_APP_AQ_SECRET,
