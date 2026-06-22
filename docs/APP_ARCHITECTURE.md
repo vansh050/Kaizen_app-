@@ -1243,7 +1243,9 @@ Check for advisor_ra_code on user record
             │  Looks up central email_advisor_map (common DB)
             │
             ├── Single advisor match → auto-set RA code → Home
-            ├── Multiple advisors → show RA ID screen (user picks)
+            ├── Multiple advisors → disambiguate by the build's subdomain
+            │       (X-Advisor-Subdomain): if exactly one mapping matches →
+            │       auto-set RA code → Home; else show RA ID screen
             └── Not found → show RA ID screen (manual entry)
 ```
 
@@ -1264,7 +1266,33 @@ The `email_advisor_map` collection in the `common` database maintains a central 
 | `Routes/userRoutes.js` | `GET /resolve-advisor/:email` endpoint |
 | App: `src/utils/storageUtils.js` | `tryResolveAdvisor()` — called from Signup, Login, and Splash screens |
 
-**Fallback rule:** If an email maps to multiple advisors, the RA ID screen is always shown to let the user choose.
+**Multi-advisor disambiguation (2026-06-22):** A single email can map to
+several advisors (a client subscribed via multiple advisors, or an internal
+test account — e.g. `pratik@alphaquark.in` maps to 5: `zamzamcapital`, `prod`,
+`rgxresearch`, `demo-alphaquark`, `alphanomy`). Each whitelabel build is
+dedicated to ONE advisor, so `resolve-advisor` now reads the request's
+`X-Advisor-Subdomain` header (case-insensitive) and, when the email maps to
+multiple advisors, **prefers the single mapping whose `advisor_subdomain`
+matches the requesting build** (response includes `disambiguated_by:
+"subdomain"`). Only when no single subdomain match exists does it fall back to
+`reason: "multiple_advisors"` → RA ID screen.
+
+> **Why this was broken (the "no Plans" bug):** the app's `tryResolveAdvisor()`
+> previously sent `X-Advisor-Subdomain: REACT_APP_WHITE_LABEL_TEXT` — the
+> *display name* (e.g. "Alphanomy" / "Zamzam Capital"), which never equals the
+> subdomain ("alphanomy" / "zamzamcapital") — and the backend ignored the
+> header entirely, returning `multiple_advisors` for any >1 mapping. Combined
+> effect: the per-user advisor was never selected, so
+> `configData.config.REACT_APP_ADVISOR_SPECIFIC_TAG` (advisorTag) stayed empty
+> and `useHomePlanSummary`'s `fetchCatalog()` returned `[]` *without an API
+> call* → **"Recommendations not available" / no Plans**, even though the
+> alphanomy mapping existed. Fixed by (a) the app sending `REACT_APP_HEADER_NAME`
+> (the real subdomain) in `src/utils/storageUtils.js` `tryResolveAdvisor()`,
+> and (b) the backend disambiguating by that subdomain in
+> `Routes/userRoutes.js` `GET /resolve-advisor/:email`. Reported 2026-06-22 on
+> the alphanomy build. **Note:** the live index/LTP staleness reported at the
+> same time is a *separate* issue — the index feed is scoped by the subdomain
+> config (which loads fine), not by the per-user advisor.
 
 ---
 

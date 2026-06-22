@@ -719,8 +719,19 @@ export const tryResolveAdvisor = async email => {
       {
         headers: {
           'Content-Type': 'application/json',
+          // Send the canonical advisor SUBDOMAIN (matches
+          // email_advisor_map.advisor_subdomain on the backend), NOT the
+          // human-facing white-label text. resolve-advisor uses this header
+          // to disambiguate when one email maps to multiple advisors (e.g. a
+          // user subscribed via several advisors, or an internal test
+          // account): each whitelabel build is dedicated to one advisor, so
+          // the backend prefers the mapping whose subdomain matches this
+          // header instead of returning multiple_advisors (which left
+          // advisorSpecificTag empty → no Plans). Previously this sent
+          // REACT_APP_WHITE_LABEL_TEXT ("Alphanomy" / "Zamzam Capital"),
+          // which never matched the subdomain ("alphanomy"/"zamzamcapital").
           'X-Advisor-Subdomain':
-            Config.REACT_APP_WHITE_LABEL_TEXT || 'alphaquark',
+            Config.REACT_APP_HEADER_NAME || 'alphaquark',
           'aq-encrypted-key': generateToken(
             Config.REACT_APP_AQ_KEYS,
             Config.REACT_APP_AQ_SECRET,
