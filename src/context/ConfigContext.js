@@ -443,6 +443,10 @@ export const ConfigProvider = ({ children }) => {
                         // appadvisors; every white-label defaults false → the
                         // SignUpRADetails screen self-redirects to Home.
                         raIdOnboardingEnabled: apiData.raIdOnboardingEnabled === true,
+
+                        // Numeric App Store id for the iOS "Update Now" deep link
+                        // (parity with Alphanomy). Null → iOS update CTA is a no-op.
+                        iosAppStoreId: apiData.iosAppStoreId || null,
                     };
 
                     console.log('✅ Using newConfig from API for APP_VARIANTS:', {
