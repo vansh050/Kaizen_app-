@@ -36,6 +36,7 @@ import RecommendationSuccessModal from '../../components/ModelPortfolioComponent
 import {useTrade} from '../TradeContext';
 import CustomTabBar from './CustomTabbar';
 import {useConfig} from '../../context/ConfigContext';
+import useTokens from '../../theme/useTokens';
 import { useComponent } from '../../design/useDesign';
 import useHomeMarketSummary from '../Home/hooks/useHomeMarketSummary';
 import { shapeMpPlan, shapeBespokePlan } from '../../utils/alphanomyPlanShape';
@@ -46,9 +47,10 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
   const {userDetails, broker, getUserDeatils, configData} = useTrade();
 
   const config = useConfig();
-  const gradient1 = config?.gradient1 || 'rgba(0, 86, 183, 1)';
-  const gradient2 = config?.gradient2 || 'rgba(0, 38, 81, 1)';
-  const mainColor = config?.mainColor || '#2563EB';
+  const tokens = useTokens();
+  const gradient1 = tokens.colors.brand.gradientStart;
+  const gradient2 = tokens.colors.brand.gradientEnd;
+  const mainColor = tokens.colors.brand.primary;
 
   const Presentation = useComponent('screens.ModelPortfolioScreen');
 
@@ -130,7 +132,10 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
       p => p?.name !== 'priorRecommendationPlan',
     ).length;
     if (config?.bespokePlansEnabled !== false && realBespokeCount > 0) {
-      availableRoutes.push({key: 'bespoke', title: 'Bespoke Plan'});
+      availableRoutes.push({
+        key: 'bespoke',
+        title: config?.bespokePlanLabel || 'Bespoke Plan',
+      });
     }
     return availableRoutes;
   }, [config, allBespoke, hasTimeCycle]);
@@ -471,7 +476,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
     />
   );
 
-  const renderItem = ({item}) => (
+  const renderItem = ({item, index}) => (
     <MPCard
       modelName={item.name}
       image={item?.image ? `${server.server.baseUrl}${item?.image}` : ''}
@@ -485,6 +490,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
       handleCardClick={() => handleCardClick(item)}
       handleSubscribe={() => handlePricingCardClick(item)}
       description={item.description}
+      index={index}
     />
   );
 
@@ -521,7 +527,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
           <View style={localStyles.textWrapper}>
             <Text style={localStyles.emptyTitle}>No Model Portfolio Available</Text>
             <Text style={localStyles.emptySubtitle}>
-              When your advisor creates a strategy, it will appear here.
+              When your manager creates a strategy, it will appear here.
             </Text>
           </View>
         </View>
@@ -580,10 +586,10 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
             </View>
             <View style={localStyles.textWrapper}>
               <Text style={localStyles.emptyTitle}>
-                No Bespoke Plan Is Available Now
+                No {config?.bespokePlanLabel || 'Bespoke Plan'} Is Available Now
               </Text>
               <Text style={localStyles.emptySubtitle}>
-                When your advisor creates any strategy, it will appear here
+                When your manager creates any strategy, it will appear here
               </Text>
             </View>
           </View>
