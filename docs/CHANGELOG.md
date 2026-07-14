@@ -8,6 +8,65 @@ where applicable.
 
 ---
 
+## [unreleased] - 2026-07-14 — Tier 4 sync from Alphab2bapp: campaign smart links + UTM attribution (4e02453 + 141fce8 + 2fcc5e6)
+
+**Source:** upstream `b2b/feature/sdk-plus-config_forkv2` commits `4e02453`
+(2026-06-23), `141fce8` (2026-06-23), `2fcc5e6` (2026-06-25). Fork HEAD's
+`src/utils/smartLink.js` (209 LOC) carries all 3.
+
+### JS runtime
+
+- **`src/utils/smartLink.js`** (new, verbatim from fork HEAD) — exports
+  `parseSmartLink`, `captureCampaign`, `captureInstallReferrer`,
+  `routeSmartLinkDestination`, `handleSmartLink`, `getStoredCampaign`.
+  Whitelabel-generic — each fork differentiates by its `REACT_APP_HEADER_NAME`
+  tenant slug in the campaign URL, no per-fork code change.
+- **`App.js`** — wires `handleSmartLink(url)` at the top of the deep-link
+  handler (returns early if the URL is a smart link so the Zerodha callback
+  handler doesn't also run). Calls `captureInstallReferrer()` on mount for
+  the first-launch deferred-deep-link recovery (Android only; no-op when
+  `react-native-play-install-referrer` isn't installed).
+- **`src/screens/Authentication/SignupScreen.js`** — reads
+  `getStoredCampaign()` after Firebase user creation and attaches it as
+  `campaign` on the `POST /api/user/` payload, tying the signup to the
+  campaign that brought them in.
+
+### Native
+
+- **`android/app/src/main/AndroidManifest.xml`** — new intent-filter for
+  `https://app-links.alphaquark.in/l/*` with `autoVerify="true"`. Kept
+  separate from the existing `test.alphaquark.in/subscriptions` filter to
+  avoid cross-host confusion.
+- **`ios/AlphaQuark/AlphaQuark.entitlements`** — adds
+  `com.apple.developer.associated-domains` with
+  `applinks:app-links.alphaquark.in`.
+
+### Backend / infra follow-ups (NOT part of this port)
+
+Universal Links / App Links verification requires the backend AASA + assetlinks
+files to list Kaizen's IDs. Currently these serve the fork's IDs.
+
+- iOS AASA (`https://app-links.alphaquark.in/.well-known/apple-app-site-association`)
+  must include Kaizen `TEAMID.com.aq.kaizenalpha` with the `/l/*` path.
+- Android assetlinks (`https://app-links.alphaquark.in/.well-known/assetlinks.json`)
+  must include Kaizen `applicationId=com.aq.kaizenalpha` + release signing
+  fingerprint.
+- `aq_backend_github/Routes/SmartLinks/SmartLinkRouter.js` and
+  `Routes/WellKnown/*` maintain both files — the backend team needs to
+  register Kaizen there.
+
+Until then: taps still work when the app is open (JS handler fires), but
+"open app directly" from a browser tap won't verify. Play Install Referrer
+capture is a no-op unless `react-native-play-install-referrer` is
+`npm install`-ed and `pod install`'d.
+
+### Docs
+
+- `docs/SMART_LINKS.md` — new file (verbatim from fork).
+- `docs/CHANGELOG.md` — this entry.
+
+---
+
 ## [unreleased] - 2026-07-14 — Tier 3-d663083 sync from Alphab2bapp: Markup PDF + web-parity (split per user decisions)
 
 **Source:** upstream `b2b/feature/sdk-plus-config_forkv2` commit `d663083`

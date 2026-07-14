@@ -12,6 +12,7 @@ import {
   SafeAreaProvider,
 } from 'react-native-safe-area-context';
 import { handleOAuthCallback } from './src/services/ZerodhaOAuthService';
+import { handleSmartLink, captureInstallReferrer } from './src/utils/smartLink';
 import Config from 'react-native-config';
 
 import Navigation from './src/components/Navigation';
@@ -139,6 +140,13 @@ const App = () => {
       const url = event.url;
       console.log('[App] Deep link received:', url);
 
+      // Campaign smart link (app-links.alphaquark.in/l/<tenant>?utm_*&dl=).
+      // Captures UTM attribution + routes to the dl destination. If it was a
+      // smart link, stop here so the Zerodha handler doesn't also run.
+      if (url && (await handleSmartLink(url))) {
+        return;
+      }
+
       // Check if it's a Zerodha OAuth callback
       const scheme = Config?.REACT_APP_DEEP_LINK_SCHEME || 'rgxapp';
       if (url && url.startsWith(`${scheme}://zerodha/callback`)) {
@@ -163,6 +171,11 @@ const App = () => {
         handleDeepLink({ url });
       }
     });
+
+    // First-launch deferred deep link: recover UTM from the Play Install
+    // Referrer when the user installed via a smart link (Android only; no-op
+    // otherwise and when the native module isn't bundled yet).
+    captureInstallReferrer();
 
     return () => {
       linkingSubscription.remove();

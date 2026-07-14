@@ -18,6 +18,7 @@ import server from '../../utils/serverConfig';
 import { generateToken } from '../../utils/SecurityTokenManager';
 import { useTrade } from '../TradeContext';
 import { validateEmail } from '../../utils/emailValidation';
+import { getStoredCampaign } from '../../utils/smartLink';
 import { useConfig } from '../../context/ConfigContext';
 import { getAdvisorSubdomain } from '../../utils/variantHelper';
 import { useComponent } from '../../design/useDesign';
@@ -169,6 +170,11 @@ const SignupScreen = () => {
             if (response) {
                 const user = response.user;
 
+                // Attach campaign attribution captured from the smart-link
+                // deep link / Play Install Referrer, so this signup is tied to
+                // the campaign that brought them in. See utils/smartLink.js.
+                const campaign = await getStoredCampaign();
+
                 await axios.post(
                     `${server.server.baseUrl}api/user/`,
                     {
@@ -179,6 +185,7 @@ const SignupScreen = () => {
                         telegramId: '',
                         profileCompletion: 50,
                         user_onBoard_from: Config?.REACT_APP_WHITE_LABEL_TEXT,
+                        campaign: campaign || undefined,
                     },
                     {
                         headers: {

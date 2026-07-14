@@ -8,5 +8,19 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<!--
+		Associated Domains for iOS Universal Links. Lets taps on
+		https://app-links.alphaquark.in/l/<tenant>?utm_*&dl=... (campaign
+		smart links) open the app directly instead of Safari. Apple fetches
+		/.well-known/apple-app-site-association from the host (served by
+		aq_backend_github WellKnownRouter). That file must list Kaizen's
+		TEAMID.com.aq.kaizenalpha and the /l/* path before iOS actually
+		routes taps to the app. Requires the Associated Domains capability
+		enabled on the App ID in the Apple Developer portal.
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:app-links.alphaquark.in</string>
+	</array>
 </dict>
 </plist>

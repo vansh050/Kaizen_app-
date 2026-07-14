@@ -67,6 +67,27 @@
                     android:pathPrefix="/subscriptions" />
             </intent-filter>
 
+            <!--
+                Campaign smart links (WhatsApp/SMS/email) via
+                app-links.alphaquark.in/l/<tenant>?utm_*&dl=... — opens
+                directly in the app when installed (verified App Link, no
+                chooser). The backend SmartLinkRouter renders its
+                interstitial / Play-Store fallback only when the app is
+                NOT installed. Parsed in App.js → src/utils/smartLink.js.
+                Verification via /.well-known/assetlinks.json served by
+                aq_backend_github WellKnownRouter — that file must list
+                Kaizen's applicationId (com.aq.kaizenalpha) + signing
+                fingerprint before autoVerify actually verifies.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="app-links.alphaquark.in" />
+                <data android:pathPrefix="/l" />
+            </intent-filter>
+
             <!-- Custom scheme matches REACT_APP_DEEP_LINK_SCHEME in .env.
                  Consumed by PayUService (payment return URL) and
                  ZerodhaOAuthService (OAuth WebView close trigger). Without
