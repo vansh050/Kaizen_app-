@@ -33,6 +33,19 @@ const getAppStoreUrl = (appStoreId) => {
   return `https://apps.apple.com/app/id${appStoreId}`;
 };
 
+// Platform-specific version override. Android and iOS frequently sit at
+// different store versions (e.g. Android 1.0.38 is live while iOS is still on
+// 1.0.17 in review). A single shared floor would soft-lock the lagging
+// platform — iOS users can never reach an Android-only version, so the
+// "Update Required" gate loops forever. Resolve `<base>Android` / `<base>Ios`
+// first, then fall back to the platform-agnostic `<base>` for backward compat.
+// Used for both `latestAppVersion` and `minAppVersion`.
+const pickPlatformVersion = (cfg, base) => {
+  if (!cfg) return undefined;
+  const key = base + (Platform.OS === 'ios' ? 'Ios' : 'Android');
+  return cfg[key] || cfg[base] || undefined;
+};
+
 // Only PLAY-STORE installs get the mandatory upgrade gate. Sideloaded / APK /
 // dev installs (installer null, "adb", or unknown) can't update through the
 // store, so we never hard-block them — APK installs are explicitly exempt.
@@ -128,23 +141,33 @@ const UpdateAppModal = ({visible, onClose, serverVersion}) => {
     // Backend-supplied version is authoritative; fall back to config so a bare
     // <UpdateAppModal/> mount resolves the same latestAppVersion that
     // <AppUpdateChecker/> passes explicitly.
-    const sv = serverVersion ?? config?.latestAppVersion ?? undefined;
+    const sv = serverVersion ?? pickPlatformVersion(config, 'latestAppVersion');
     const result = await checkForAppUpdate(sv);
-    if (!result.updateAvailable) return;
+    // Self-heal: if a refreshed config says no update is needed, HIDE the modal
+    // (it may have been shown earlier from a higher floor that was since lowered).
+    if (!result.updateAvailable) {
+      setShowModal(false);
+      return;
+    }
 
     // APK / sideloaded installs can't update via the store → never gate them.
     const fromStore = await isStoreInstall();
-    if (!fromStore) return;
+    if (!fromStore) {
+      setShowModal(false);
+      return;
+    }
 
     // Mandatory by default (force upgrade, non-dismissible). A backend
-    // `minAppVersion` softens it: at/above min → optional dismissible nudge.
+    // `minAppVersion` (platform-specific or generic) softens it: at/above min →
+    // optional dismissible nudge.
     let isMandatory = config?.forceUpdate !== false;
+    const minV = pickPlatformVersion(config, 'minAppVersion');
     if (
-      config?.minAppVersion &&
-      semver.valid(config.minAppVersion) &&
+      minV &&
+      semver.valid(minV) &&
       semver.valid(result.currentVersion)
     ) {
-      isMandatory = semver.lt(result.currentVersion, config.minAppVersion);
+      isMandatory = semver.lt(result.currentVersion, minV);
     }
 
     // Optional nudges respect the 48h "Maybe Later" cooldown; mandatory ignores it.
@@ -229,7 +252,9 @@ const UpdateAppModal = ({visible, onClose, serverVersion}) => {
 // it separately from the default UpdateAppModal.
 export const AppUpdateChecker = () => {
   const config = useConfig();
-  return <UpdateAppModal serverVersion={config?.latestAppVersion} />;
+  // Platform-specific latest version (Android vs iOS) with fallback to the
+// generic latestAppVersion.
+return <UpdateAppModal serverVersion={pickPlatformVersion(config, 'latestAppVersion')} />;
 };
 
 const styles = StyleSheet.create({

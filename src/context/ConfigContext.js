@@ -443,6 +443,15 @@ export const ConfigProvider = ({ children }) => {
                         // version; falls back to Play Store / App Store scraping when null.
                         // ============================================================================
                         latestAppVersion: apiData.latestAppVersion || null,
+                        // Platform-specific force-update floors (Android vs iOS can be on
+                        // different store versions). UpdateAppModal.pickPlatformVersion()
+                        // prefers these over the generic latestAppVersion/minAppVersion.
+                        latestAppVersionAndroid: apiData.latestAppVersionAndroid || null,
+                        latestAppVersionIos: apiData.latestAppVersionIos || null,
+                        minAppVersion: apiData.minAppVersion || null,
+                        minAppVersionAndroid: apiData.minAppVersionAndroid || null,
+                        minAppVersionIos: apiData.minAppVersionIos || null,
+                        forceUpdate: apiData.forceUpdate,
                         // Multi-advisor RA-ID onboarding gate. Only the master
                         // app (b2b / subdomain "prod") sets this true in
                         // appadvisors; every white-label defaults false → the

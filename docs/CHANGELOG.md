@@ -8,6 +8,57 @@ where applicable.
 
 ---
 
+## [unreleased] - 2026-07-14 — Tier 5 sync from Alphab2bapp: update-gate platform floors + self-heal (c5acccd + 69cafff)
+
+**Source:** upstream `b2b/feature/sdk-plus-config_forkv2` commits `c5acccd` +
+`69cafff` (2026-06-24). Additive on top of Kaizen's existing update gate
+(commit `0664638`, 2026-06-22 — mandatory + APK exemption + AppUpdateChecker
+wire). No conflict — fork's changes only touch code paths Kaizen didn't yet.
+
+### `src/UpdateAppModal.js`
+
+- New `pickPlatformVersion(cfg, base)` helper — resolves `<base>Android` /
+  `<base>Ios` first, falls back to the platform-agnostic `<base>` for
+  backward compat. Used for both `latestAppVersion` and `minAppVersion`.
+- `checkUpdate()` `serverVersion` fallback + `AppUpdateChecker` wrapper
+  now use `pickPlatformVersion(config, 'latestAppVersion')` — so a store
+  version that only exists on Android doesn't soft-lock the iOS gate
+  (and vice-versa).
+- Mandatory-vs-optional decision uses `pickPlatformVersion(config, 'minAppVersion')`.
+- Self-heal: when `checkUpdate()` runs on a refreshed config and returns
+  `!result.updateAvailable` (or `!fromStore`), the modal is now
+  proactively hidden (`setShowModal(false)`) instead of just returning —
+  so a modal shown earlier from a higher floor closes automatically when
+  the floor is lowered in the backend.
+
+### `src/context/ConfigContext.js`
+
+New fields mirrored from `apiData` into the resolved config object:
+`latestAppVersionAndroid`, `latestAppVersionIos`, `minAppVersion`,
+`minAppVersionAndroid`, `minAppVersionIos`, `forceUpdate`. All default to
+`null` / `undefined` when the backend doesn't set them (safe no-op).
+
+### Backend requirement
+
+For platform floors to take effect, set the relevant fields on the tenant's
+`appadvisors` doc:
+```
+db.appadvisors.updateOne({subdomain:'<tenant>'}, {$set: {
+  latestAppVersionAndroid: '1.0.38',
+  latestAppVersionIos: '1.0.17',
+  minAppVersionAndroid: '1.0.30',
+  minAppVersionIos: '1.0.15',
+}})
+```
+If only the platform-agnostic `latestAppVersion` / `minAppVersion` fields
+are set, behavior is identical to pre-Tier-5.
+
+### Docs
+
+- `docs/CHANGELOG.md` — this entry.
+
+---
+
 ## [unreleased] - 2026-07-14 — Tier 7 sync from Alphab2bapp: logo fallback (b198035 + 1199403)
 
 **Source:** upstream `b2b/feature/sdk-plus-config_forkv2` commits `b198035`
