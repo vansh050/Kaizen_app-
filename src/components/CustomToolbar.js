@@ -55,6 +55,7 @@ import MotilalModal from './BrokerConnectionModal/MotilalModal';
 import MarketIndices from './HomeScreenComponents/MarketIndices';
 import ProfileModal from './ProfileModal';
 import {getAdvisorSubdomain} from '../utils/variantHelper';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 const {width, height} = Dimensions.get('window');
 
 const CustomToolbar = React.memo(({count, currentRoute}) => {
@@ -93,6 +94,8 @@ const CustomToolbar = React.memo(({count, currentRoute}) => {
   const auth = getAuth();
   const user = auth.currentUser;
   const userEmail = user?.email;
+
+  const insets = useSafeAreaInsets();
 
   // Use Firebase displayName as fallback if userDetails not loaded yet
   const name = userDetails?.name || user?.displayName || user?.email?.split('@')[0];
@@ -194,47 +197,65 @@ const CustomToolbar = React.memo(({count, currentRoute}) => {
         borderBottomLeftRadius: 15,
         borderBottomRightRadius: 15,
       }}>
-      <View style={styles.toolbar}>
-        <View style={{flexDirection: 'row', alignItems: 'center'}}>
-          <View
-            style={{
-              justifyContent: 'center',
-              alignItems: 'center',
-              alignSelf: 'center',
-              width: 40,
-              height: 40,
-              borderRadius: 20, // half of width/height for perfect circle
-              overflow: 'hidden',
-              backgroundColor: '#fff',
-              marginRight: 10, // spacing between logo and text
-            }}>
-            {toolbarLogo && typeof toolbarLogo === 'string' ? (
-              <Image
-                source={{uri: toolbarLogo}}
-                onError={() => setRemoteLogoFailed(true)}
-                style={{
-                  width: 30,
-                  height: 30,
-                  resizeMode: 'cover',
-                }}
-              />
-            ) : toolbarLogo ? (
-              <Image
-                source={toolbarLogo}
-                style={{
-                  width: 30,
-                  height: 30,
-                  resizeMode: 'cover',
-                }}
-              />
-            ) : (
-              <View style={{width: 30, height: 30, backgroundColor: '#ddd'}} />
-            )}
-          </View>
+      <View
+        style={[
+          styles.toolbar,
+          {
+            paddingLeft: Math.max(20, insets.left),
+            paddingRight: Math.max(20, insets.right),
+          },
+        ]}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            flex: 1,
+            marginRight: 8,
+          }}>
+          {/* Left circle renders ONLY when an advisor logo actually resolves.
+              A blank white circle otherwise reads as a broken/duplicate avatar
+              (Markup change #5). */}
+          {toolbarLogo ? (
+            <View
+              style={{
+                justifyContent: 'center',
+                alignItems: 'center',
+                alignSelf: 'center',
+                width: 40,
+                height: 40,
+                borderRadius: 20, // half of width/height for perfect circle
+                overflow: 'hidden',
+                backgroundColor: '#fff',
+                marginRight: 10, // spacing between logo and text
+              }}>
+              {typeof toolbarLogo === 'string' ? (
+                <Image
+                  source={{uri: toolbarLogo}}
+                  onError={() => setRemoteLogoFailed(true)}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    resizeMode: 'cover',
+                  }}
+                />
+              ) : (
+                <Image
+                  source={toolbarLogo}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    resizeMode: 'cover',
+                  }}
+                />
+              )}
+            </View>
+          ) : null}
 
-          <Text style={styles.toolbarText}>Hello, {name}</Text>
+          <Text style={[styles.toolbarText, {flexShrink: 1}]} numberOfLines={1}>
+            Hello, {name}
+          </Text>
         </View>
-        <View style={{}}>
+        <View style={{flexShrink: 0}}>
           <View style={{flexDirection: 'row', alignItems: 'center'}}>
             <TouchableOpacity
               onPress={handleOpenCart}

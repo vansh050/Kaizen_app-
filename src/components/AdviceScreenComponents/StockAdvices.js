@@ -61,6 +61,7 @@ import notifee, { EventType } from '@notifee/react-native';
 
 import { generateToken } from '../../utils/SecurityTokenManager';
 import { isZerodhaSellAuthorized } from '../../utils/zerodhaDdpiGate';
+import { isGttNativeBroker, isGttOcoLeg } from '../../utils/gttSupport';
 import { getAdvisorSubdomain } from '../utils/variantHelper';
 import useSdkClient from '../../sdk/useSdkClient';
 
@@ -609,9 +610,12 @@ const StockAdvices = React.memo(({ userEmail, orderscreen, type }) => {
       return;
     }
     if (broker === 'Zerodha' && hasGttOrders) {
-      // Log only — the user-facing UX still proceeds via REST. No toast
-      // because the user explicitly opted in to GTT and we're honoring it.
-      console.log('[StockAdvices] Zerodha basket contains GTT orders — routing through REST (process-trades) instead of Kite Publisher to preserve GTT semantics.');
+      // Zerodha customer-GTT is OFF (Kite Publisher can't place GTT — see
+      // gttSupport.js). `isGttNativeBroker('Zerodha')` is false, so these
+      // gttCheck orders fall through to regularOrders and place as REGULAR via
+      // REST — matching web. The advisor-side synthetic price-alert rail carries
+      // the GTT intent for Zerodha customers. Log only.
+      console.log('[StockAdvices] Zerodha basket contains GTT-flagged orders — Zerodha customer-GTT is OFF; placing as REGULAR orders via REST (advisor price-alert rail covers the trigger intent).');
     }
 
     // Pre-order EDIS check — equity delivery (CNC) sells only.
@@ -638,12 +642,25 @@ const StockAdvices = React.memo(({ userEmail, orderscreen, type }) => {
       return;
     }
 
-    // Split into GTT and regular orders
+    // Split into GTT and regular orders — the customer-facing GTT gate is the
+    // SHARED source of truth `isGttNativeBroker` (src/utils/gttSupport.js,
+    // ported from web / GTT_ARCHITECTURE §4). On Kaizen this is DISABLED via
+    // KAIZEN_GTT_CUSTOMER_ROUTING_ENABLED=false, so every GTT-flagged leg
+    // falls into regularOrders (synthetic price-alert rail). Once per-broker
+    // cert (docs/GTT_MOBILE_CERT_CHECKLIST.md) is complete, flip the util's
+    // kill-switch and the fork's PER-LEG segment+OCO gating (ICICI = F&O only;
+    // Angel One / Dhan = single-trigger only) engages automatically.
     const gttOrders = stockDetails.filter(
-      stock => stock.gttCheck === true && ['upstox', 'zerodha'].includes(broker.toLowerCase()),
+      stock =>
+        stock.gttCheck === true &&
+        isGttNativeBroker(broker, stock.Exchange || stock.exchange, isGttOcoLeg(stock)),
     );
     const regularOrders = stockDetails.filter(
-      stock => !(stock.gttCheck === true && ['upstox', 'zerodha'].includes(broker.toLowerCase())),
+      stock =>
+        !(
+          stock.gttCheck === true &&
+          isGttNativeBroker(broker, stock.Exchange || stock.exchange, isGttOcoLeg(stock))
+        ),
     );
 
     const getOrderPayload = (isGtt = false) => {
@@ -672,6 +689,23 @@ const StockAdvices = React.memo(({ userEmail, orderscreen, type }) => {
             return { ...gttPayload, apiKey: checkValidApiAnSecret(apiKey), secretKey: checkValidApiAnSecret(secretKey), jwtToken };
           case 'AliceBlue':
             return { ...gttPayload, clientCode, apiKey: checkValidApiAnSecret(apiKey), accessToken: jwtToken };
+          // GTT customer-enabled 2026-07-13 upstream (GTT_ARCHITECTURE §4 shared truth).
+          // ⚠️ Dark code on Kaizen — isGttNativeBroker() returns false via the
+          // KAIZEN_GTT_CUSTOMER_ROUTING_ENABLED kill-switch, so these cases never
+          // execute at runtime. Ship-ready payload shapes for when each broker's
+          // GTT cert (docs/GTT_MOBILE_CERT_CHECKLIST.md) is complete.
+          // Credential shapes mirror each broker's REGULAR payload; apiKey/secretKey
+          // use the GTT path's decrypt convention (checkValidApiAnSecret), except
+          // Angel One's apiKey which is the platform config key (angelOneApiKey),
+          // not an encrypted user credential.
+          case 'Groww':
+            return { ...gttPayload, jwtToken };
+          case 'Dhan':
+            return { ...gttPayload, clientCode, jwtToken };
+          case 'Angel One':
+            return { ...gttPayload, apiKey: angelOneApiKey, secretKey: checkValidApiAnSecret(secretKey), jwtToken };
+          case 'ICICI Direct':
+            return { ...gttPayload, apiKey: checkValidApiAnSecret(apiKey), secretKey: checkValidApiAnSecret(secretKey), jwtToken };
           default:
             return { ...gttPayload, apiKey: checkValidApiAnSecret(apiKey), jwtToken };
         }

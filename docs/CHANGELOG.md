@@ -8,6 +8,86 @@ where applicable.
 
 ---
 
+## [unreleased] - 2026-07-14 — Tier 3-d663083 sync from Alphab2bapp: Markup PDF + web-parity (split per user decisions)
+
+**Source:** upstream `b2b/feature/sdk-plus-config_forkv2` commit `d663083`
+(2026-07-13, 18-file mega commit). Ported per user decisions:
+
+### ✅ Ported
+
+**New files (verbatim from fork HEAD):**
+- `src/utils/gttSupport.js` (with Kaizen kill-switch — see below)
+- `src/utils/emailValidation.js` (128 LOC)
+- `designs/default/composites/PortfolioSummaryCard.js` (599 LOC)
+- `src/FunctionCall/services/PortfolioSummaryService.js` (92 LOC)
+- `docs/GTT_MOBILE_CERT_CHECKLIST.md` (123 LOC)
+
+**Cosmetic (Markup PDF change-requests):**
+- `designs/default/screens/LoginScreen.js` — "Its" → "It" typo
+- `src/components/CustomToolbar.js` — safe-area padding (`insets.left/right`),
+  hide-when-null logo circle, name `numberOfLines={1}` + `flexShrink: 1` (fits
+  atop Tier 7's onError fallback + Tier 7's remoteLogoFailed state).
+- `designs/default/screens/BespokePerformanceScreen.js` — invest-now bottom
+  safe-area (`paddingBottom: Math.max(insets.bottom, 8)`).
+- `designs/default/screens/MPPerformanceScreen.js` — same bottom safe-area
+  on the bottomBar.
+- `src/components/ModelPortfolioComponents/MPCardBespoke.js` — card gradient
+  swap (white → tenant gradient1/gradient2), text/border/chip colors flipped
+  to white/rgba(255,…) variants, invest button flipped to white bg + tenant
+  text color. Preserves Tier 1's yearly-GST fix.
+
+**Feature (both gated to DEFAULT):**
+- `src/context/ConfigContext.js` — `performanceSummaryEnabled` (default ON,
+  mirrors web `!== false`) + `kycBlockingEnabled` (default OFF, mirrors web
+  `=== true`). Both added to `parityFlags` fetch, resolved config, and the
+  AsyncStorage persistence blob. Fits atop Tier 5's platform-version fields.
+- `designs/default/screens/PortfolioScreen.js` — mounts `PortfolioSummaryCard`
+  as `ListHeaderComponent`. Self-gates on `performanceSummaryEnabled`.
+- `src/components/ModelPortfolioComponents/MPInvestNowModal.js` — adds
+  `runKycBlockingGate()` at step 1 (PAN/DoB → payment). Fail-open on infra
+  errors; blocks only on active KRA mismatch.
+- `src/screens/Authentication/SignupScreen.js` — pre-Firebase email format
+  validation via new `src/utils/emailValidation.js` util. Blocks malformed
+  emails from reaching `clientlistdatas` (which later break Telegram
+  removal cron). Uses normalized email.
+
+### 🔒 GTT: ported but DISABLED (kill switch)
+
+Per user directive: fork's GTT reconciliation code shipped but gated OFF
+until per-broker cert (see `docs/GTT_MOBILE_CERT_CHECKLIST.md`).
+
+- `src/utils/gttSupport.js` has a new top-level constant
+  `KAIZEN_GTT_CUSTOMER_ROUTING_ENABLED = false` — `isGttNativeBroker()`
+  early-returns `false` when this is `false`. To enable per-broker after
+  cert, flip the constant (or replace with a per-broker allowlist).
+- `src/components/AdviceScreenComponents/StockAdvices.js` — GTT split logic
+  fully ported (`isGttNativeBroker` + `isGttOcoLeg` filter, new switch cases
+  for Groww / Dhan / Angel One / ICICI Direct). Dark code at runtime — every
+  GTT-flagged leg falls into `regularOrders` (matches pre-port behavior).
+  The Zerodha GTT-basket log message updated to explain the new routing.
+
+### ❌ SKIPPED per user directive
+
+- **Broker roster change** — `src/config/brokerDisplayConfig.js` NOT
+  modified. Fork replaced Motilal Oswal with IIFL Securities in the picker;
+  Kaizen kept its `5600481` de-listing (no IIFL), so the fork's change is
+  effectively a reversal for Kaizen. Motilal stays visible in Kaizen; IIFL
+  stays hidden.
+- **`src/components/AdviceScreenComponents/StockAdvices.js` broker roster
+  changes** — none in d663083 for this file (it's all GTT); no skip needed.
+- **`docs/ENACH_SPIKE_D4.md`** — fork-only doc, not in Kaizen.
+
+### Docs
+
+- `docs/CHANGELOG.md` — this entry.
+- `docs/GTT_MOBILE_CERT_CHECKLIST.md` — new file (copied verbatim from fork).
+  Cert gate documented; matches the kill-switch above.
+- `docs/MODEL_PORTFOLIO_ARCHITECTURE.md` — not updated in this pass (no MP
+  schema/endpoint changes; PortfolioSummary is a new render-side composite
+  with its own service; already documented in the fork's own CHANGELOG).
+
+---
+
 ## [unreleased] - 2026-07-14 — Tier 3 sync from Alphab2bapp: Methodology tab + T+1 settlement heads-up (c08d07e + 4af676c)
 
 **Source:** upstream `b2b/feature/sdk-plus-config_forkv2` commits `c08d07e`

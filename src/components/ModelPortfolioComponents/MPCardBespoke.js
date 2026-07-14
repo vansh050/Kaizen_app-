@@ -308,7 +308,7 @@ const MPCardBespoke = ({
   return (
     <View>
       <LinearGradient
-        colors={['#fff', '#fff', '#fff']}
+        colors={[gradient1, gradient2]}
         start={{ x: 0.2, y: 0 }}
         end={{ x: 0.8, y: 1 }}
         style={[styles.cardContainer, { borderRadius: isExpanded ? 0.5 : 4,flex:1, }]}>
@@ -389,7 +389,7 @@ const MPCardBespoke = ({
                   <Text
                     style={{
                       fontSize: 12,
-                      color: '#9CA3AF',
+                      color: 'rgba(255,255,255,0.7)',
                       fontFamily: 'Poppins-Regular',
                       textDecorationLine: 'line-through',
                     }}
@@ -400,7 +400,7 @@ const MPCardBespoke = ({
                 <Text
                   style={{
                     fontSize: 14,
-                    color: '#1F2937',
+                    color: '#fff',
                     fontFamily: 'Poppins-SemiBold',
                   }}
                 >
@@ -410,7 +410,7 @@ const MPCardBespoke = ({
                   <Text
                     style={{
                       fontSize: 10,
-                      color: '#6B7280',
+                      color: 'rgba(255,255,255,0.8)',
                       fontFamily: 'Poppins-Regular',
                       marginTop: -2,
                     }}
@@ -430,7 +430,7 @@ const MPCardBespoke = ({
             <Text
   style={{
     fontSize: 10,
-    color: '#6B7280',
+    color: 'rgba(255,255,255,0.8)',
     fontFamily: 'Poppins-Regular',
     marginTop: 2,
   }}
@@ -471,21 +471,16 @@ const MPCardBespoke = ({
                   paddingVertical: 2,
                   paddingHorizontal: 16,
                   borderRadius: 999,
-                  backgroundColor: isSelected ? `${mainColor}15` : '#FFFFFF',
+                  backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.3)' : 'transparent',
                   borderWidth: 1,
-                  borderColor: isSelected ? mainColor : '#E5E7EB',
+                  borderColor: isSelected ? 'transparent' : 'rgba(255, 255, 255, 0.6)',
                   marginRight: 8,
                   marginBottom: 8,
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: isSelected ? 2 : 0 },
-                  shadowOpacity: isSelected ? 0.1 : 0,
-                  shadowRadius: isSelected ? 3 : 0,
-                  elevation: isSelected ? 2 : 0,
                 }}
               >
                 <Text
                   style={{
-                    color: isSelected ? mainColor : '#374151',
+                    color: '#fff',
                     fontSize: 10,
                     marginTop: 2,
                     fontFamily: 'Poppins-Medium',
@@ -505,9 +500,9 @@ const MPCardBespoke = ({
             <Text style={styles.buttonText}>View More</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={InvestNow} style={[styles.investButton, { backgroundColor: status === 'renew' ? '#E8976B' : mainColor }]}>
-            {(status === 'renew' || status === 'expired') && <ArrowRight size={10} color={'white'} />}
-            <Text style={styles.investButtonText}>
+          <TouchableOpacity onPress={InvestNow} style={[styles.investButton, { backgroundColor: status === 'renew' ? '#E8976B' : '#fff' }]}>
+            {(status === 'renew' || status === 'expired') && <ArrowRight size={10} color={status === 'renew' ? 'white' : mainColor} />}
+            <Text style={[styles.investButtonText, { color: status === 'renew' ? '#fff' : mainColor }]}>
               {status === 'active'
                 ? 'Subscribed'
                 : status === 'renew'
@@ -607,7 +602,7 @@ cardContainer: {
   },
   title: {
     fontSize: 16,
-    color: '#1F2937',
+    color: '#fff',
     fontFamily: 'Poppins-SemiBold',
     flex: 1,
   },
@@ -642,7 +637,7 @@ buttonContainer: {
   bottom: 0,
   left: 0,
   right: 0,
-  backgroundColor: '#fff',
+  backgroundColor: 'transparent',
 
   gap: 10,
 },
@@ -651,15 +646,14 @@ buttonContainer: {
     flex: 1,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderColor: '#E5E7EB',
-    borderWidth: 1,
+    borderWidth: 0,
     borderRadius: 3,
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'center',
     alignContent: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: 'rgba(232, 232, 232, 0.58)',
     gap: 4,
   },
   investButton: {
@@ -674,7 +668,7 @@ buttonContainer: {
   },
   buttonText: {
     fontSize: 11,
-    color: '#6B7280',
+    color: '#fff',
     fontFamily: 'Satoshi-Bold',
   },
   investButtonText: {

@@ -17,6 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import server from '../../utils/serverConfig';
 import { generateToken } from '../../utils/SecurityTokenManager';
 import { useTrade } from '../TradeContext';
+import { validateEmail } from '../../utils/emailValidation';
 import { useConfig } from '../../context/ConfigContext';
 import { getAdvisorSubdomain } from '../../utils/variantHelper';
 import { useComponent } from '../../design/useDesign';
@@ -150,9 +151,21 @@ const SignupScreen = () => {
             setLoading(false);
             return;
         }
+        // Gate malformed emails at the joining UI so they never reach
+        // clientlistdatas. Firebase accepts "x@gmailcom" / "x@gmail" (no TLD
+        // dot); those bad addresses later break ClientModel validation in the
+        // Telegram removal cron, making the customer un-removable on expiry.
+        // Mirrors web SignUpEmail.js (365f7501) + CUSTOMER_MASTER_ARCHITECTURE §8.
+        const { ok: emailOk, error: emailError, normalized: normalizedEmail } = validateEmail(email);
+        if (!emailOk) {
+            setError(emailError);
+            setErrorShow(true);
+            setLoading(false);
+            return;
+        }
 
         try {
-            const response = await auth().createUserWithEmailAndPassword(email, password);
+            const response = await auth().createUserWithEmailAndPassword(normalizedEmail, password);
             if (response) {
                 const user = response.user;
 

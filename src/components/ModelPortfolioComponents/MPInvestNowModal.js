@@ -755,9 +755,88 @@ const MPInvestNowModal = ({
     }
   };
 
+  // Checkout-time blocking KYC gate — verify PAN+DoB against the KRA BEFORE
+  // moving past the KYC step to payment/Digio. Gated by `kycBlockingEnabled`
+  // (default OFF). Block ONLY on an active KRA mismatch; verified / not-found /
+  // transient / our-infra-outage all PROCEED (never block a paying customer on
+  // OUR verification infra). Mirrors web PricingPage.runKycBlockingGate.
+  const runKycBlockingGate = async () => {
+    if (config?.kycBlockingEnabled !== true) return true;
+
+    const pan = (panNumber || '').trim().toUpperCase();
+    if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) {
+      setPanError('Please enter a valid PAN (format ABCDE1234F) to continue.');
+      return false;
+    }
+    // birthDate is a Date object in this modal; the KRA expects a date string.
+    const dobStr =
+      birthDate instanceof Date
+        ? `${birthDate.getFullYear()}-${String(birthDate.getMonth() + 1).padStart(2, '0')}-${String(birthDate.getDate()).padStart(2, '0')}`
+        : String(birthDate || '').trim();
+    if (!dobStr) {
+      Toast.show({
+        type: 'error',
+        text1: 'Date of birth required',
+        text2: 'Please enter your date of birth to verify your PAN with the KRA.',
+      });
+      return false;
+    }
+
+    try {
+      Toast.show({
+        type: 'info',
+        text1: 'Verifying PAN…',
+        text2: 'Checking your PAN and date of birth with the KRA.',
+      });
+      const advisor = configData?.config?.REACT_APP_HEADER_NAME;
+      const res = await axios.post(
+        `${server.ccxtServer.baseUrl}misc/kyc/kra/verify-pan/${advisor}/${encodeURIComponent(
+          userEmail || '',
+        )}`,
+        { panNo: pan, dob: dobStr, mobile: mobileNumber || '' },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME,
+            'aq-encrypted-key': generateToken(
+              Config.REACT_APP_AQ_KEYS,
+              Config.REACT_APP_AQ_SECRET,
+            ),
+          },
+          timeout: 15000,
+        },
+      );
+      if (res?.data?.kycOutcome === 'mismatch') {
+        Alert.alert(
+          'PAN verification failed',
+          res?.data?.message ||
+            "We couldn't verify this PAN with the date of birth entered. Please check and enter the correct PAN and date of birth to continue.",
+        );
+        return false;
+      }
+      // verified | not_found | unavailable → allow.
+      return true;
+    } catch (e) {
+      // Fail-open — never block a paying customer on OUR verification outage.
+      // Server-side post-payment KYC still records any discrepancy.
+      console.error('[MPInvestNow] KYC gate error (allowing through):', e?.message);
+      return true;
+    }
+  };
+
   const completeStep = async stepId => {
     if (isStepTransitioning) return;
     setIsStepTransitioning(true);
+
+    // Blocking KYC gate (SEBI onboarding): must pass before leaving the
+    // PAN/DoB step (step 1) toward consent/payment/Digio.
+    if (stepId === 1) {
+      const kycOk = await runKycBlockingGate();
+      if (!kycOk) {
+        setIsStepTransitioning(false);
+        return;
+      }
+    }
 
     // Smooth transition animation
     await new Promise(resolve => setTimeout(resolve, 300));

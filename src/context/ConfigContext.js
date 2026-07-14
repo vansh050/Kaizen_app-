@@ -130,6 +130,14 @@ export const ConfigProvider = ({ children }) => {
                             portfolioHealthEnabled:  d.portfolioHealthEnabled === true,
                             transitionEngineEnabled: d.transitionEngineEnabled === true,
                             portfolioHealth:         d.portfolioHealth || undefined,
+                            // Client Performance Summary (fund-wise portfolio summary +
+                            // value history + realised P&L). Default-ON, mirroring web's
+                            // `!== false` gate in Routes/Admin/loginRoutes.js /frontend-config.
+                            performanceSummaryEnabled: d.performanceSummaryEnabled !== false,
+                            // Checkout-time blocking KYC gate (PAN+DoB → KRA verify
+                            // BEFORE payment/Digio). Default OFF, mirrors web's
+                            // `=== true` gate in loginRoutes.js /frontend-config.
+                            kycBlockingEnabled:      d.kycBlockingEnabled === true,
                         };
                     } catch (e) {
                         console.warn('[ConfigContext] frontend-config flags unavailable, defaulting OFF:', e?.message);
@@ -267,6 +275,12 @@ export const ConfigProvider = ({ children }) => {
                         portfolioHealthEnabled:  parityFlags.portfolioHealthEnabled  ?? false,
                         transitionEngineEnabled: parityFlags.transitionEngineEnabled ?? false,
                         portfolioHealth:         parityFlags.portfolioHealth         ?? undefined,
+                        // Client Performance Summary — DEFAULT-ON to match web. A failed
+                        // frontend-config fetch (parityFlags == {}) still enables it.
+                        performanceSummaryEnabled: parityFlags.performanceSummaryEnabled ?? true,
+                        // Checkout-time blocking KYC gate — DEFAULT-OFF. A failed
+                        // frontend-config fetch (parityFlags == {}) leaves it OFF.
+                        kycBlockingEnabled:      parityFlags.kycBlockingEnabled ?? false,
 
                         // ============================================================================
                         // PAYMENT CONFIGURATION
@@ -517,6 +531,8 @@ export const ConfigProvider = ({ children }) => {
                                     portfolioHealthEnabled: newConfig.portfolioHealthEnabled,
                                     transitionEngineEnabled: newConfig.transitionEngineEnabled,
                                     portfolioHealth: newConfig.portfolioHealth,
+                                    performanceSummaryEnabled: newConfig.performanceSummaryEnabled,
+                                    kycBlockingEnabled: newConfig.kycBlockingEnabled,
                                 },
                             };
                             await AsyncStorage.setItem('@app:advisorConfig', JSON.stringify(updatedStored));

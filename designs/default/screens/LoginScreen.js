@@ -158,7 +158,7 @@ const LoginScreen = ({ viewModel, actions }) => {
                                 variant="caption"
                                 style={{ color: '#BDCFFF', fontSize: 12, marginBottom: 35 }}
                             >
-                                Its only takes a minute to create your account
+                                It only takes a minute to create your account
                             </Text>
 
                             <View style={styles.inputContainer}>
