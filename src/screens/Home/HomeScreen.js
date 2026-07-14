@@ -1418,7 +1418,7 @@ const HomeScreen = ({ }) => {
                 <View>
                   <Text style={styles.StockTitle}>Recommendations</Text>
                   <Text style={styles.StockTitlebelow}>
-                    Bespoke Active Recommendations
+                    {config?.bespokePlanLabel || 'Bespoke'} Active Recommendations
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -1495,7 +1495,7 @@ const HomeScreen = ({ }) => {
                     marginHorizontal: 15,
                   }}>
                   <View>
-                    <Text style={styles.StockTitle}>Top Bespoke Plans</Text>
+                    <Text style={styles.StockTitle}>Top {config?.bespokePlanLabel || 'Bespoke Plans'}</Text>
                     <Text style={styles.StockTitlebelow}>
                       Ranked based of user feedbacks
                     </Text>
@@ -1614,7 +1614,7 @@ const HomeScreen = ({ }) => {
                 <View>
                   <Text style={styles.StockTitle}>Recommendations</Text>
                   <Text style={styles.StockTitlebelow}>
-                    Bespoke Active Recommendations
+                    {config?.bespokePlanLabel || 'Bespoke'} Active Recommendations
                   </Text>
                 </View>
                 <TouchableOpacity

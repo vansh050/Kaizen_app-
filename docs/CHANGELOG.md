@@ -8,6 +8,57 @@ where applicable.
 
 ---
 
+## [unreleased] - 2026-07-14 — Tier 6 sync from Alphab2bapp: bespoke label seam (f3b38cb + 933cab9)
+
+**Source:** upstream `b2b/feature/sdk-plus-config_forkv2` commits `f3b38cb` +
+`933cab9` (2026-07-06, same day). Adds a `config?.bespokePlanLabel` seam so
+per-tenant `whitelabel/appVariants.js` can override every "Bespoke Plan(s)"
+string surface without touching `src/` or the backend. Every tenant without
+the field falls back to the unchanged literal — safe no-op for Kaizen today.
+
+### Files touched (12)
+
+- `src/screens/Drawer/ProductCatalogScreen.js` — tab title (f3b38cb).
+- `designs/default/screens/BespokePerformanceScreen.js` — viewModel `config`
+  destructure + section title (933cab9).
+- `designs/default/screens/HomeScreen.js` — home "Top Bespoke Plans" (933cab9).
+- `designs/default/screens/ModelPortfolioScreen.js` — viewModel `config`
+  destructure + plan-type badge (933cab9).
+- `src/components/CustomFlatlist.js` — empty-state "No Bespoke Advice Found"
+  → "No {label} Recommendations Found" (933cab9).
+- `src/help.js` — same empty-state fix mirrored (933cab9).
+- `src/components/HomeScreenComponents/AllPlansDetails.js` — 2 plan-type
+  badges + 1 section title (933cab9).
+- `src/components/ModelPortfolioComponents/PaymentSuccessModal.js` — success
+  copy plan-type suffix (933cab9).
+- `src/screens/Drawer/BespokePerformanceScreen.js` — container passes `config`
+  into viewModel (933cab9).
+- `src/screens/Home/HomeScreen.js` — 2× "Bespoke Active Recommendations" +
+  1× "Top Bespoke Plans" (933cab9).
+- `src/screens/Home/MySubscriptionsScreen.js` — tab title + 2 empty states
+  (933cab9).
+- `src/screens/PortfolioScreen/PortFolioCard2.js` — arrow-fn body converted
+  to block so `useConfig()` can be called; `leftText` uses seam (933cab9).
+
+### Already had the seam
+
+`src/screens/Drawer/ModelPortfolioScreen.js` L137 (bespoke tab title) and
+L589 (empty state) — both from an earlier partial sync.
+
+### Backend / config seam
+
+`bespokePlanLabel` is a plain field on the per-variant
+`whitelabel/appVariants.js` object (same mechanism as `themeColor`, `logo`) —
+it flows through `ConfigContext`'s `initialConfig` spread automatically, no
+new wiring required. Kaizen's tenant does not set the field today; every
+"Bespoke Plan(s)" surface renders the unchanged literal.
+
+### Docs
+
+- `docs/CHANGELOG.md` — this entry.
+
+---
+
 ## [unreleased] - 2026-07-14 — Tier 5 sync from Alphab2bapp: update-gate platform floors + self-heal (c5acccd + 69cafff)
 
 **Source:** upstream `b2b/feature/sdk-plus-config_forkv2` commits `c5acccd` +

@@ -198,7 +198,7 @@ const HomeScreenPresentation = ({ home }) => {
                             <TouchableOpacity onPress={() => setSeeAllBespokeplan(false)}>
                                 <ArrowLeft size={20} color={'black'} />
                             </TouchableOpacity>
-                            <Text style={styles.StockTitle}>Top Bespoke Plans</Text>
+                            <Text style={styles.StockTitle}>Top {config?.bespokePlanLabel || 'Bespoke Plans'}</Text>
                         </View>
                         <ModelPortfolioScreen type={'bespokevertical'} />
                     </View>

@@ -23,6 +23,7 @@ import { generateToken } from '../../utils/SecurityTokenManager';
 import { useTrade } from '../TradeContext';
 import { convertResponse } from '../../utils/tradeUtils';
 import { useGstConfig } from '../../context/GstConfigContext';
+import { useConfig } from '../../context/ConfigContext';
 import { getAdvisorSubdomain } from '../../utils/variantHelper';
 import { useComponent } from '../../design/useDesign';
 import { getSubscriptionStatusString } from '../../utils/subscriptionStatus';
@@ -40,6 +41,7 @@ const colorPalette = [
 const BespokePerformanceScreen = ({ route }) => {
     const { modelName, specificPlan } = route.params;
     const { configData } = useTrade();
+    const config = useConfig();
     const navigation = useNavigation();
     const { gstConfigure: configGst, gstWithTextConfigure: configGstWithText } = useGstConfig();
 
@@ -458,6 +460,7 @@ const BespokePerformanceScreen = ({ route }) => {
         <Presentation
             viewModel={{
                 modelName,
+                config,
                 strategyDetails,
                 singleStrategyDetails,
                 latestRebalance,

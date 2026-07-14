@@ -166,6 +166,7 @@ const BespokePerformanceScreen = ({ viewModel, actions }) => {
 
     const {
         modelName = '',
+        config = null,
         strategyDetails = { pieData: [] },
         latestRebalance = null,
         planDetails = null,
@@ -255,7 +256,7 @@ const BespokePerformanceScreen = ({ viewModel, actions }) => {
                                                 <ChevronLeft size={24} color="#000" onPress={onGoBack} />
                                             </TouchableOpacity>
                                             <View style={styles.header}>
-                                                <Text style={styles.title}>Bespoke Plans</Text>
+                                                <Text style={styles.title}>{config?.bespokePlanLabel || 'Bespoke Plans'}</Text>
                                             </View>
                                         </View>
                                         {/* Header */}

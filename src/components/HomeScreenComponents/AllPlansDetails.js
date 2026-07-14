@@ -21,6 +21,7 @@ import { getAuth } from '@react-native-firebase/auth';
 import axios from 'axios';
 import { useTrade } from '../../screens/TradeContext';
 import { useGstConfig } from '../../context/GstConfigContext';
+import { useConfig } from '../../context/ConfigContext';
 import { withGst, gstLabel } from '../../utils/gstHelpers';
 import RenderHTML from 'react-native-render-html';
 import { useWindowDimensions } from 'react-native';
@@ -32,6 +33,7 @@ const CARD_SPACING = 16;
 const AllPlanDetails = ({ type }) => {
   const { userDetails, planList,configData } = useTrade();
   const { gstConfigure: configGst, gstWithTextConfigure: configGstWithText } = useGstConfig();
+  const config = useConfig();
   const [activeIndex, setActiveIndex] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [allStrategy, setAllStrategy] = useState([]);
@@ -181,7 +183,7 @@ const AllPlanDetails = ({ type }) => {
             <Text style={styles.cardTitle}>{card.title}</Text>
             <Text style={styles.cardAuthor}>{card.author}</Text>
             <Text style={styles.planTypeTag}>
-              {card.type === 'bespoke' ? 'Bespoke' : 'MP'}
+              {card.type === 'bespoke' ? (config?.bespokePlanLabel || 'Bespoke') : 'MP'}
             </Text>
           </View>
         </View>
@@ -242,7 +244,7 @@ const AllPlanDetails = ({ type }) => {
 
   const sections = [
     {
-      title: "Top Bespoke plans",
+      title: `Top ${config?.bespokePlanLabel || "Bespoke plans"}`,
       data: allBespoke,
       type: "bespoke"
     },
@@ -325,7 +327,7 @@ const renderPlanItem = ({ item }) => {
                 ]}
               >
                 <Text style={styles.planTagText}>
-                  {selectedPlan?.type === 'bespoke' ? 'Bespoke' : 'MP'}
+                  {selectedPlan?.type === 'bespoke' ? (config?.bespokePlanLabel || 'Bespoke') : 'MP'}
                 </Text>
               </View>
             </View>

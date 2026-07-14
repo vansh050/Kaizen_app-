@@ -265,7 +265,7 @@ const MySubscriptionsScreen = () => {
             activeOpacity={0.7}
           >
             <Text style={[styles.subTabText, activeSubTab === 'bespoke' && styles.subTabTextActive]}>
-              Bespoke Plans ({bespokeSubscribed.length})
+              {config?.bespokePlanLabel || 'Bespoke Plans'} ({bespokeSubscribed.length})
             </Text>
           </TouchableOpacity>
         </View>
@@ -279,12 +279,12 @@ const MySubscriptionsScreen = () => {
         <View style={styles.emptyContainer}>
           <Crown size={48} color={mainColor} />
           <Text style={styles.emptyTitle}>
-            {activeSubTab === 'mp' ? 'No Model Portfolio Subscriptions' : 'No Bespoke Subscriptions'}
+            {activeSubTab === 'mp' ? 'No Model Portfolio Subscriptions' : `No ${config?.bespokePlanLabel || 'Bespoke'} Subscriptions`}
           </Text>
           <Text style={styles.emptySubtitle}>
             {activeSubTab === 'mp'
               ? "You haven't subscribed to any model portfolios yet."
-              : "You haven't subscribed to any bespoke plans yet."}
+              : `You haven't subscribed to any ${(config?.bespokePlanLabel || 'bespoke plans').toLowerCase()} yet.`}
           </Text>
           <TouchableOpacity
             style={[styles.browsePlansButton, {backgroundColor: mainColor}]}
