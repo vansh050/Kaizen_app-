@@ -171,12 +171,18 @@ const MPCard = ({
     const subscriptions = subscriptionData?.subscriptions;
     if (!subscriptions || subscriptions.length === 0) return 'none';
 
+    // Exact match only (post-normalization). A substring/`.includes()`
+    // fallback here previously let a deleted plan's subscription row
+    // (e.g. "test") falsely mark an unrelated plan whose name merely
+    // contains it as a prefix (e.g. "test 1") as subscribed — see
+    // markup tester report 2026-07-16. normalizeGroupName already
+    // collapses spaces/dashes/underscores so legitimate formatting
+    // variants of the SAME plan name ("MP Test1" vs "MP-Test1") already
+    // compare equal without needing substring matching.
     const normalizedPlan = normalizeGroupName(ele?.name);
     const matchingPlanSubs = subscriptions.filter((sub) => {
       const normalizedSubPlan = normalizeGroupName(sub?.plan);
-      return normalizedSubPlan === normalizedPlan ||
-        normalizedSubPlan.includes(normalizedPlan) ||
-        normalizedPlan.includes(normalizedSubPlan);
+      return normalizedSubPlan === normalizedPlan;
     });
     if (matchingPlanSubs.length === 0) return 'none';
 

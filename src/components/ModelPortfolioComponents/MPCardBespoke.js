@@ -249,12 +249,14 @@ const MPCardBespoke = ({
       const subscriptions = subscriptionData?.subscriptions;
       if (!subscriptions || subscriptions.length === 0) return 'none';
 
+      // Exact match only (post-normalization) — see MPCard.js for why the
+      // previous substring/`.includes()` fallback was removed (falsely
+      // matched an unrelated plan whose name contains a deleted plan's
+      // name as a prefix, e.g. "test" vs "test 1").
       const normalizedPlan = normalizeGroupName(modelName);
       const matchingPlanSubs = subscriptions.filter(sub => {
         const nSub = normalizeGroupName(sub?.plan);
-        return nSub === normalizedPlan ||
-          nSub.includes(normalizedPlan) ||
-          normalizedPlan.includes(nSub);
+        return nSub === normalizedPlan;
       });
       if (matchingPlanSubs.length === 0) return 'none';
 
