@@ -1411,6 +1411,29 @@ const MPInvestNowModal = ({
           },
         },
       );
+      // Backend guard refusals (e.g. the CVL pre-payment KYC gate in
+      // aq_backend Routes/CashFree/CashFree.js) come back as HTTP 200 with
+      // `{status: false, message}` via _RS.apiNew — an axios "success" — so
+      // they never reach the catch below. Without this check the refusal
+      // fell through to the generic "Missing payment session data" throw
+      // and the tap looked like a dead button (markup tester, 2026-07-16).
+      if (response?.data?.status === false) {
+        console.error('[OneTime] Order create refused:', response?.data?.message);
+        logPayment('CASHFREE_ONETIME_CREATE_REFUSED', {
+          message: response?.data?.message,
+          userEmail,
+          mobileNumber,
+          advisor: advisorTag,
+          planId: plandata?._id,
+        }, configData);
+        Alert.alert(
+          'Payment could not be started',
+          response?.data?.message || 'Please try again in a moment.',
+        );
+        setLoading(false);
+        return;
+      }
+
       const paymentId = response?.data?.subscription?.cashfree_order_id;
       const paymentSessionId = response?.data?.data?.payment_session_id;
       const subscriptionId = response?.data?.subscription?.id;
@@ -1622,6 +1645,13 @@ const MPInvestNowModal = ({
       console.error(
         '[OneTime] Payment initialization failed:',
         err.response?.data || err.message,
+      );
+      // Surface the failure — a silent catch here made the "Complete
+      // Investment" tap look like a dead button (markup tester, 2026-07-16).
+      Alert.alert(
+        'Payment could not be started',
+        err?.response?.data?.message ||
+          "We couldn't start the payment. Please try again — if this keeps happening, contact support.",
       );
     }
   };
@@ -1860,6 +1890,21 @@ const MPInvestNowModal = ({
       });
 
       console.log('[PayU] Order created:', response);
+
+      // Backend guard refusals (e.g. the CVL pre-payment KYC gate in
+      // aq_backend Routes/PayU/PayU.js) come back as HTTP 200 with
+      // `{status: false, message}` via _RS.apiNew (no `success`/`error`
+      // fields), so the generic throw below would discard the
+      // customer-relevant message. Surface it directly.
+      if (response?.status === false) {
+        console.error('[PayU] Order create refused:', response?.message);
+        Alert.alert(
+          'Payment could not be started',
+          response?.message || 'Please try again in a moment.',
+        );
+        setLoading(false);
+        return;
+      }
 
       if (!response.success || !response.data) {
         throw new Error(response.error || 'Failed to create PayU order');
