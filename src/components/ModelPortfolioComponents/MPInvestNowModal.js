@@ -783,11 +783,13 @@ const MPInvestNowModal = ({
 
   // Checkout-time blocking KYC gate — verify PAN+DoB against the KRA BEFORE
   // moving past the KYC step to payment/Digio. Gated by `kycBlockingEnabled`
-  // (default OFF). Blocks on an active KRA mismatch AND on a genuine call
+  // (default OFF). Final policy (product decision 2026-07-16): ONLY a
+  // `verified` outcome allows the user through. Every other classification
+  // BLOCKS — `mismatch`, `not_found`, `service_error`, `unavailable` (incl.
+  // a genuine KRA/CVL outage or missing CVL creds), and a genuine call
   // failure (network/timeout/malformed response — no verification signal at
-  // all). A clean backend `unavailable`/`not_found` classification (e.g. CVL
-  // WEBERR-001, a known/tracked access gap) still proceeds. Mirrors web
-  // PricingPage.runKycBlockingGate.
+  // all). See the per-outcome comments below for the rationale on each.
+  // Mirrors web PricingPage.runKycBlockingGate.
   const runKycBlockingGate = async () => {
     const gateOn = await resolveKycBlockingEnabled();
     if (!gateOn) return true;
