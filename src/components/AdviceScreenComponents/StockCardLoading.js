@@ -341,7 +341,7 @@ const StockCardLoading = ({
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.tradeBtn}
-              onPress={() => handleTradePress(symbol, tradeId)}
+              onPress={() => handleTradePress(symbol, tradeId, action)}
             >
               <Text style={styles.tradeBtnText}>Trade Now</Text>
     

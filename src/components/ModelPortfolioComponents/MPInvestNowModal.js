@@ -876,10 +876,22 @@ const MPInvestNowModal = ({
         );
         return false;
       }
-      // unavailable (a GENUINE transient KRA outage/timeout, or no CVL
-      // credentials configured at all) | verified → allow. Never halt a paying
-      // customer on a temporary verification blip; a persistent CVL misconfig
-      // is 'service_error' above, not this.
+      if (res?.data?.kycOutcome === 'unavailable') {
+        // BLOCK (product decision 2026-07-16, revised — supersedes the
+        // "transient outages allow" call made earlier the same day): a
+        // GENUINE KRA/CVL outage/timeout, or no CVL creds configured at all,
+        // still means we have NO positive verification signal for this PAN.
+        // Letting the customer through on "CVL hasn't given a pass" is
+        // exactly the gap that motivated this gate. Retryable, so the
+        // message invites a retry rather than pointing at support.
+        Alert.alert(
+          'Unable to verify PAN',
+          "We're unable to verify your PAN right now. Please try again in a moment — if this keeps happening, contact support.",
+        );
+        return false;
+      }
+      // verified → allow. Every other outcome is handled above; this is the
+      // only path that actually confirms the PAN with a KRA.
       return true;
     } catch (e) {
       // Fail-CLOSED (product decision 2026-07-16): a network/exception failure

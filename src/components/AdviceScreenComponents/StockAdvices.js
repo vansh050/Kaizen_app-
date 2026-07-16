@@ -2562,8 +2562,13 @@ const StockAdvices = React.memo(({ userEmail, orderscreen, type }) => {
 
       // If stock is already selected
       if (isStockSelected) {
-        const isBuyOrder = action.toUpperCase() === 'BUY';
-        const isSellOrder = action.toUpperCase() === 'SELL';
+        // `action` was undefined whenever a caller (e.g. StockCardLoading's
+        // "Trade Now" button) didn't pass it through — action.toUpperCase()
+        // on undefined threw and crashed the app. Trade Now now forwards its
+        // own action prop, but default-safe here too for any other caller.
+        const safeAction = (action || '').toUpperCase();
+        const isBuyOrder = safeAction === 'BUY';
+        const isSellOrder = safeAction === 'SELL';
         if (broker === 'Angel One') {
           if (isBuyOrder) {
             openReviewForSingle();
@@ -2611,8 +2616,9 @@ const StockAdvices = React.memo(({ userEmail, orderscreen, type }) => {
         return;
       }
 
-      const isBuyOrder = action.toUpperCase() === 'BUY';
-      const isSellOrder = action.toUpperCase() === 'SELL';
+      const safeAction = (action || '').toUpperCase();
+      const isBuyOrder = safeAction === 'BUY';
+      const isSellOrder = safeAction === 'SELL';
       await handleSelectStock(symbol, tradeId, 'add', 'handlesingle');
       // Broker-specific auth gating before opening the review modal.
       if (broker === 'Zerodha') {
