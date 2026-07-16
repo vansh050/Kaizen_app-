@@ -440,10 +440,14 @@ const BespokePerformanceScreen = ({ route }) => {
     const getSubscriptionStatus = (planName, subscriptions) => {
         const normalizeGroupName = name => { if (!name) return ''; return name.toLowerCase().replace(/%20/g, ' ').replace(/\s+/g, '_').trim(); };
         if (!subscriptions || subscriptions.length === 0) return 'none';
+        // Exact match only (post-normalization) — see MPCard.js for why the
+        // previous substring/`.includes()` fallback was removed (falsely
+        // matched an unrelated plan whose name contains a deleted plan's
+        // name as a prefix, e.g. "test" vs "test 1").
         const matchingPlanSubs = subscriptions.filter(sub => {
             const nSub = normalizeGroupName(sub?.plan);
             const nPlan = normalizeGroupName(planName);
-            return nSub === nPlan || nSub.includes(nPlan) || nPlan.includes(nSub);
+            return nSub === nPlan;
         });
         if (matchingPlanSubs.length === 0) return 'none';
         const activeSubscriptions = matchingPlanSubs.filter(sub => sub?.status !== 'deleted');

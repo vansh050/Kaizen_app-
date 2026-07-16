@@ -45,11 +45,19 @@ const normalizeGroupName = name => {
 const getSubscriptionStatus = (planName, subscriptions) => {
   if (!subscriptions || subscriptions.length === 0) return {status: 'none'};
 
+  // Exact match only (post-normalization). A substring/`.includes()`
+  // fallback here previously let a deleted plan's subscription row
+  // (e.g. "test") falsely mark an unrelated plan whose name merely
+  // contains it as a prefix (e.g. "test 1") as subscribed — see
+  // markup tester report 2026-07-16. normalizeGroupName already
+  // collapses spaces/dashes/underscores so legitimate formatting
+  // variants of the SAME plan name already compare equal without
+  // needing substring matching.
   const normalizedPlan = normalizeGroupName(planName);
   const matchingPlanSubs = subscriptions.filter(
     sub => {
       const nSub = normalizeGroupName(sub?.plan);
-      return nSub === normalizedPlan || nSub.includes(normalizedPlan) || normalizedPlan.includes(nSub);
+      return nSub === normalizedPlan;
     },
   );
   if (matchingPlanSubs.length === 0) return {status: 'none'};
