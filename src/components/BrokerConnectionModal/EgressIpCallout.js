@@ -66,6 +66,16 @@ import {generateToken} from '../../utils/SecurityTokenManager';
 import {getAdvisorSubdomain} from '../../utils/variantHelper';
 import LinkifiedUrl from '../../UIComponents/BrokerConnectionUI/HelpUI/LinkifiedUrl';
 import {useColors} from '../../theme/useColors';
+// Native CashFree subscription checkout for the customer_pays ₹99/mo
+// dedicated-IP paywall — SAME primitive MPInvestNowModal uses for plan
+// mandates. IPV4_EGRESS_BILLING_DESIGN.md §6.2.
+import {CFPaymentGatewayService} from 'react-native-cashfree-pg-sdk';
+import {CFSubscriptionSession} from 'cashfree-pg-api-contract';
+import {
+  getCashfreeEnvironment,
+  isInstallSourceError,
+  friendlyPaymentError,
+} from '../../utils/cashfreeEnv';
 
 // Brokers requiring per-customer IP whitelisting. Partners short-
 // circuit to null without hitting /egress/me. Keep keys in sync with
@@ -159,6 +169,15 @@ const EgressIpCallout = ({
   const [claiming, setClaiming] = useState(false);
   const [flashAck, setFlashAck] = useState(false);
   const flashAnim = useRef(new Animated.Value(0)).current;
+  // customer_pays paywall (advisor ipv4_egress.mode === 'customer_pays'):
+  // /egress/claim answers 402 with a {plan} block → render a subscribe
+  // sheet → native CF subscription mandate → verify-on-demand (Node polls
+  // CF; subscription webhooks are unreliable).
+  const [paymentInfo, setPaymentInfo] = useState(null); // the 402 body
+  const [paymentStarted, setPaymentStarted] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyMsg, setVerifyMsg] = useState(null);
 
   const fetchStatus = useCallback(async () => {
     if (!brokerKey || !WHITELIST_BROKERS.has(brokerKey)) {
@@ -280,18 +299,202 @@ const EgressIpCallout = ({
       });
       await fetchStatus();
     } catch (err) {
-      const apiErr =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        err.message;
-      setErrorMsg(`Could not assign a dedicated IP: ${apiErr}`);
+      if (err.response?.status === 402 && err.response?.data?.plan) {
+        // customer_pays advisor — show the subscribe sheet, not an error.
+        setPaymentInfo(err.response.data);
+        setVerifyMsg(null);
+      } else {
+        const apiErr =
+          err.response?.data?.message ||
+          err.response?.data?.error ||
+          err.message;
+        setErrorMsg(`Could not assign a dedicated IP: ${apiErr}`);
+      }
     } finally {
       setClaiming(false);
     }
   };
 
+  // Poll Node → CF for a confirmed charge; on grant, re-fetch → claimed.
+  const handleVerifyPayment = useCallback(async () => {
+    setVerifying(true);
+    setVerifyMsg(null);
+    try {
+      const body = {broker: brokerKey};
+      if (customerId) body.customer_id = customerId;
+      if (customerEmail) body.email = customerEmail;
+      const res = await axios.post(
+        `${server.server.baseUrl}api/egress-ipv4/verify`,
+        body,
+        {headers: buildHeaders(configData), timeout: 30000},
+      );
+      if (res.data?.granted) {
+        setPaymentInfo(null);
+        setPaymentStarted(false);
+        await fetchStatus(); // → claimed with the dedicated IP
+      } else {
+        setVerifyMsg(
+          res.data?.message ||
+            'Payment not confirmed yet — finish the payment, then tap “I’ve paid — verify”.',
+        );
+      }
+    } catch (err) {
+      setVerifyMsg(
+        `Could not verify the payment: ${
+          err.response?.data?.error || err.message
+        }`,
+      );
+    } finally {
+      setVerifying(false);
+    }
+  }, [brokerKey, customerId, customerEmail, configData, fetchStatus]);
+
+  // Create the CF subscription on the platform account, then launch the
+  // native mandate checkout. onVerify auto-verifies (mobile advantage
+  // over web's manual button); the manual button stays as the fallback.
+  const handleSubscribe = async () => {
+    setSubscribing(true);
+    setVerifyMsg(null);
+    try {
+      const body = {broker: brokerKey};
+      if (customerId) body.customer_id = customerId;
+      if (customerEmail) body.email = customerEmail;
+      const res = await axios.post(
+        `${server.server.baseUrl}api/egress-ipv4/subscribe`,
+        body,
+        {headers: buildHeaders(configData), timeout: 25000},
+      );
+      if (res.data?.already_active) {
+        await handleVerifyPayment();
+        return;
+      }
+      const subsSessionId = res.data?.subscription_session_id;
+      const subscriptionId = res.data?.subscription_id;
+      if (!subsSessionId) {
+        throw new Error(res.data?.error || 'no payment session returned');
+      }
+      setPaymentStarted(true);
+      CFPaymentGatewayService.setCallback({
+        onVerify: async () => {
+          CFPaymentGatewayService.removeCallback();
+          CFPaymentGatewayService.removeEventSubscriber();
+          await handleVerifyPayment();
+        },
+        onError: async error => {
+          CFPaymentGatewayService.removeCallback();
+          CFPaymentGatewayService.removeEventSubscriber();
+          const isCancel =
+            error?.code === 'CANCELLED' ||
+            error?.code === 'USER_CANCELLED' ||
+            String(error?.message || '').includes('cancelled');
+          setVerifyMsg(
+            isCancel
+              ? 'Payment cancelled — you can retry the subscription.'
+              : `Payment error: ${
+                  error?.message || 'please try again'
+                }. If you were charged, tap “I’ve paid — verify”.`,
+          );
+        },
+      });
+      CFPaymentGatewayService.setEventSubscriber({
+        onReceivedEvent: () => {},
+      });
+      const session = new CFSubscriptionSession(
+        subsSessionId, // RAW — do not strip any suffix
+        subscriptionId,
+        getCashfreeEnvironment(),
+      );
+      CFPaymentGatewayService.doSubscriptionPayment(session);
+    } catch (err) {
+      // doSubscriptionPayment throws synchronously on the Play install-
+      // source block — surface the actionable message.
+      const message = isInstallSourceError(err)
+        ? friendlyPaymentError(err)
+        : err.response?.data?.error ||
+          err.message ||
+          'Could not start the subscription.';
+      setVerifyMsg(message);
+    } finally {
+      setSubscribing(false);
+    }
+  };
+
   // Partner broker — nothing to render.
   if (brokerState === 'partner') return null;
+
+  // customer_pays paywall — the claim answered 402; render the subscribe
+  // sheet until the payment is verified and the grant lands.
+  if (paymentInfo && brokerState !== 'claimed') {
+    const plan = paymentInfo.plan || {};
+    const amount = plan.amount ?? 99;
+    return (
+      <View style={styles.container}>
+        <View style={[styles.card, styles.cardBlue]}>
+          <Text style={styles.titleBlue}>
+            {brokerDisplay} needs a dedicated static IP — ₹{amount}/month
+          </Text>
+          <Text style={styles.bodyBlue}>
+            • Your own static IP, reserved for you — whitelist it once in your{' '}
+            {brokerDisplay} portal and it never changes.
+          </Text>
+          <Text style={styles.bodyBlue}>
+            • Covers every broker that needs a static IPv4, not just{' '}
+            {brokerDisplay}.
+          </Text>
+          <Text style={styles.bodyBlue}>
+            • Auto-renews monthly via CashFree; cancel anytime — the IP is
+            released after a 7-day grace period.
+          </Text>
+          {verifyMsg && (
+            <Text style={[styles.bodyBlue, {marginTop: 6}]}>{verifyMsg}</Text>
+          )}
+          <TouchableOpacity
+            onPress={handleSubscribe}
+            disabled={subscribing || verifying}
+            style={[
+              styles.primaryButton,
+              {backgroundColor: brand},
+              (subscribing || verifying) && {opacity: 0.6},
+            ]}
+            activeOpacity={0.8}>
+            {subscribing ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.primaryButtonText}>
+                {paymentStarted
+                  ? 'Open payment again'
+                  : `Subscribe — ₹${amount}/month`}
+              </Text>
+            )}
+          </TouchableOpacity>
+          {paymentStarted && (
+            <TouchableOpacity
+              onPress={handleVerifyPayment}
+              disabled={verifying}
+              style={[
+                styles.primaryButton,
+                {
+                  backgroundColor: 'transparent',
+                  borderWidth: 1,
+                  borderColor: brand,
+                  marginTop: 8,
+                },
+                verifying && {opacity: 0.6},
+              ]}
+              activeOpacity={0.8}>
+              {verifying ? (
+                <ActivityIndicator size="small" color={brand} />
+              ) : (
+                <Text style={[styles.primaryButtonText, {color: brand}]}>
+                  I’ve paid — verify
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    );
+  }
 
   const MigrationBanner = migrationBanner ? (
     <View style={[styles.card, styles.cardRed, {marginBottom: 10}]}>

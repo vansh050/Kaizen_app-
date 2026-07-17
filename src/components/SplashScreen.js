@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {View, Image, StyleSheet, Dimensions} from 'react-native';
 import ProgressBar from 'react-native-progress-bar-horizontal';
 import Config from 'react-native-config';
@@ -26,6 +26,38 @@ export default function SplashScreen() {
 
   console.log('SplashScreen config logo:', LogoComponent);
   console.log('SplashScreen logo type:', typeof LogoComponent);
+
+  // Refs mirroring the latest config-loading/phoneFirstLoginEnabled state,
+  // kept in sync via the effect below. Needed because the unauthenticated
+  // branch of the auth-state-changed listener below fires inside a
+  // `setTimeout`, well after this render — a plain closed-over `config`
+  // value would be frozen at mount time (when ConfigContext's fetch usually
+  // hasn't resolved yet) and would never observe the load actually
+  // finishing. Refs mutate in place and are always read fresh. Mirrors
+  // MPInvestNowModal.js's kycBlockingEnabledRef pattern (Alphab2bapp).
+  const configLoadingRef = useRef(config?.configLoading);
+  const phoneFirstLoginEnabledRef = useRef(config?.phoneFirstLoginEnabled === true);
+  useEffect(() => {
+    configLoadingRef.current = config?.configLoading;
+    phoneFirstLoginEnabledRef.current = config?.phoneFirstLoginEnabled === true;
+  }, [config?.configLoading, config?.phoneFirstLoginEnabled]);
+
+  // Waits out a still-in-flight config load (up to 6s, matching the
+  // provider's own frontend-config fetch timeout) before trusting
+  // `phoneFirstLoginEnabled`. Without this, a fast device that reaches the
+  // unauthenticated branch before ConfigContext's initial fetch resolves
+  // would read the pre-fetch default (false) and silently skip the phone-
+  // first flow even for an opted-in advisor. If config is still loading
+  // after the wait, default OFF (standard Login) — never risk routing an
+  // unauthenticated user to a screen we can't confirm is wanted.
+  const resolvePhoneFirstLoginEnabled = async () => {
+    if (!configLoadingRef.current) return phoneFirstLoginEnabledRef.current === true;
+    const start = Date.now();
+    while (configLoadingRef.current && Date.now() - start < 6000) {
+      await new Promise(r => setTimeout(r, 150));
+    }
+    return phoneFirstLoginEnabledRef.current === true;
+  };
 
   useEffect(() => {
     const unsubscribe = auth().onAuthStateChanged(user => {
@@ -114,7 +146,13 @@ export default function SplashScreen() {
 
         checkUserStatus(); // Call the async function
       } else {
-        setTimeout(() => navigation.replace('Login'), 2000);
+        setTimeout(async () => {
+          // Phone-first login flow — per-advisor opt-in (default OFF, see
+          // ConfigContext.js). Loading/off/error all resolve to the
+          // standard Login screen, matching the app's existing behavior.
+          const phoneFirst = await resolvePhoneFirstLoginEnabled();
+          navigation.replace(phoneFirst ? 'Onboarding' : 'Login');
+        }, 2000);
       }
     });
 

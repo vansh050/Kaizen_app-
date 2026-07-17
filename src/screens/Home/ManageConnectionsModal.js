@@ -44,6 +44,17 @@ const BROKER_MODAL_KEY_MAP = {
   'Motilal Oswal': 'Motilal',
   'Axis Securities': 'Axis Securities',
   'IIFL Securities': 'IIFL',
+  // 2026-07-17 — Arihant Capital + DefinEdge Securities were missing here,
+  // so handleReconnect's `if (!modalKey)` fallback fired for both: the
+  // modal closed and onReconnect(brokerName) was called with no modalKey,
+  // silently bouncing the user instead of opening their connect modal.
+  // Identity mapping is correct — BrokerConnectModalDispatch.normalizeBrokerKey
+  // passes both strings through unchanged and its renderLegacyModal switch
+  // has cases for exactly these two ('Arihant Capital' -> ArihantConnectModal,
+  // 'DefinEdge Securities' -> DefinEdgeConnectModal). Matches the backend
+  // connected_brokers[].broker slot names (brokerRegistry.js apiBrokerName).
+  'Arihant Capital': 'Arihant Capital',
+  'DefinEdge Securities': 'DefinEdge Securities',
 };
 
 const ManageConnectionsModal = ({

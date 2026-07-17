@@ -75,6 +75,7 @@
 
 import React, {useState} from 'react';
 import Config from 'react-native-config';
+import {useConfig} from '../../context/ConfigContext';
 
 // Legacy per-broker modals
 import IIFLModal from '../iiflmodal';
@@ -127,10 +128,32 @@ import AngelOneCautionaryWarning from './AngelOneCautionaryWarning';
 //     "WebView lands on AQ login page" issue user-reported on both
 //     apps 2026-05-01.
 //
-// Set is intentionally empty today — keep it so future near-term
-// gaps have a documented home rather than scattering fallback
+// 2026-07-17 added Arihant Capital + DefinEdge Securities — CRASH FIX.
+//   These two brokers were added to the display tile list + normalizeBrokerKey
+//   (2026-06-09 web parity) with purpose-built legacy modals
+//   (ArihantConnectModal 2-step OTP flow, DefinEdgeConnectModal credential
+//   flow) but were NEVER added to the SDK's `BROKER_FORM_SCHEMAS` map
+//   (mobile-sdk packages/rn/src/components/brokerFormSchema.ts — neither
+//   broker is in the `BrokerName` union at all). With the flag on and this
+//   Set empty, every broker routed to Phase3SdkBrokerModal, which mounts
+//   `<BrokerCredentialForm broker={brokerName}>`; that widget's initial-state
+//   seeding does `for (const f of baseSchema.fields)` where
+//   `baseSchema = BROKER_FORM_SCHEMAS[broker]` — `undefined` for these two —
+//   so the app crashed with a TypeError on the very first render
+//   (BrokerCredentialForm.tsx:159), on every tap of "Connect Arihant Capital"
+//   / "Connect DefinEdge Securities". Adding them here routes to their
+//   legacy modals, which is correct and complete today.
+//   RULE: any broker added to normalizeBrokerKey / the display tile list
+//   MUST either get a BROKER_FORM_SCHEMAS entry in the SDK repo, or be
+//   listed in this Set — otherwise the SDK lane crashes on an undefined
+//   schema for that broker. See also the defensive guard added in
+//   Phase3SdkBrokerModal.js the same day, which prevents this crash class
+//   even if a future broker is forgotten here.
+//
+// Otherwise the Set is intentionally kept small — keep it so future
+// near-term gaps have a documented home rather than scattering fallback
 // decisions across files.
-const SDK_LEGACY_FALLBACK = new Set([]);
+const SDK_LEGACY_FALLBACK = new Set(['Arihant Capital', 'DefinEdge Securities']);
 
 const useSdkBrokerFlow = () => {
   const v = String(Config?.REACT_APP_USE_SDK_BROKER_FLOW || '')
@@ -170,9 +193,21 @@ const BrokerConnectModalDispatch = ({
   reauthConfig,
   ...rest
 }) => {
+  // Hook must run unconditionally (before the isVisible early-return).
+  const runtimeConfig = useConfig();
   if (!isVisible) return null;
 
   const key = normalizeBrokerKey(brokerName);
+  // Per-customer Angel One (advisor `useSharedAngelOneKey === false`)
+  // MUST use the SDK modal — that's the only path with the
+  // apiKey/secretKey/clientCode form + per-customer egress-IP whitelist.
+  // The legacy AngleOneBookingTrueSheet is the SHARED-key publisher-login
+  // WebView and has no per-customer story. This override is additive:
+  // shared-key Angel One (the default) is completely untouched, so no
+  // existing advisor's connect flow changes. See
+  // prod-alphaquark-github/docs/IPV4_EGRESS_BILLING_DESIGN.md.
+  const angelOnePerCustomer =
+    key === 'Angel One' && runtimeConfig?.useSharedAngelOneKey === false;
   const commonProps = {
     isVisible: true,
     onClose,
@@ -187,7 +222,10 @@ const BrokerConnectModalDispatch = ({
   // pre-connect cautionary-listing warning sheet — fresh connects
   // see it once, re-auth (`reauthConfig` non-null) skips it.
   let modal;
-  if (useSdkBrokerFlow() && !SDK_LEGACY_FALLBACK.has(key)) {
+  if (
+    angelOnePerCustomer ||
+    (useSdkBrokerFlow() && !SDK_LEGACY_FALLBACK.has(key))
+  ) {
     modal = <Phase3SdkBrokerModal {...commonProps} brokerName={key} />;
   } else {
     modal = renderLegacyModal(key, commonProps);
