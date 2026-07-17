@@ -71,6 +71,7 @@ import Config from 'react-native-config';
 import {
   BrokerCredentialForm,
   WebViewBrokerAuthFlow,
+  getBrokerFormSchema,
 } from '@alphaquark/mobile-sdk';
 import {useTrade} from '../../screens/TradeContext';
 import {useConfig} from '../../context/ConfigContext';
@@ -713,6 +714,55 @@ const Phase3SdkBrokerModal = ({
       </TouchableOpacity>
     </View>
   );
+
+  // Defensive guard — last line of defense against the crash class fixed
+  // 2026-07-17 (see SDK_LEGACY_FALLBACK comment in
+  // BrokerConnectModalDispatch.js). If this modal ever mounts for a broker
+  // the SDK has no `BROKER_FORM_SCHEMAS` entry for (a future broker added
+  // to the dispatch/tile list but forgotten in either the SDK schema map
+  // or SDK_LEGACY_FALLBACK), `<BrokerCredentialForm>` would crash hard —
+  // its initial-state seeding does `for (const f of baseSchema.fields)`
+  // where `baseSchema = BROKER_FORM_SCHEMAS[broker]` is `undefined`
+  // (BrokerCredentialForm.tsx:159). Catch it here instead and render a
+  // non-crashing notice using this modal's existing error presentation
+  // (styles.errorBox/errorTitle/errorBody) plus the standard Header close
+  // button, rather than mounting the form at all.
+  const brokerSchema = getBrokerFormSchema(brokerName);
+  if (!brokerSchema) {
+    console.error(
+      `[Phase3SdkBrokerModal] No SDK BROKER_FORM_SCHEMAS entry for broker "${brokerName}". ` +
+        'This broker reached the SDK connect lane but the mobile SDK has no form schema ' +
+        'registered for it. Fix: either add a BROKER_FORM_SCHEMAS entry for this broker in ' +
+        'alphaquark-mobile-sdk (packages/rn/src/components/brokerFormSchema.ts), or add the ' +
+        'broker to SDK_LEGACY_FALLBACK in BrokerConnectModalDispatch.js to route it to its ' +
+        'legacy modal.',
+    );
+    return (
+      <Pressable
+        style={styles.scrim}
+        onPress={() => {
+          setShowBrokerModal?.(false);
+          onClose?.();
+        }}>
+        <View
+          style={styles.panel}
+          onStartShouldSetResponder={() => true}
+          onResponderTerminationRequest={() => false}>
+          <Header title={`Connect ${brokerName}`} />
+          <ScrollView contentContainerStyle={styles.scrollPad}>
+            <View style={styles.errorBox}>
+              <Text style={styles.errorTitle}>Not available yet</Text>
+              <Text style={styles.errorBody}>
+                This broker isn't available via the new connection flow yet.
+                Please try again shortly, or contact support if this
+                persists.
+              </Text>
+            </View>
+          </ScrollView>
+        </View>
+      </Pressable>
+    );
+  }
 
   // OAuth phase — render WebView round-trip after form collected creds.
   if (oauthExtraBody) {

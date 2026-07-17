@@ -128,10 +128,32 @@ import AngelOneCautionaryWarning from './AngelOneCautionaryWarning';
 //     "WebView lands on AQ login page" issue user-reported on both
 //     apps 2026-05-01.
 //
-// Set is intentionally empty today — keep it so future near-term
-// gaps have a documented home rather than scattering fallback
+// 2026-07-17 added Arihant Capital + DefinEdge Securities — CRASH FIX.
+//   These two brokers were added to the display tile list + normalizeBrokerKey
+//   (2026-06-09 web parity) with purpose-built legacy modals
+//   (ArihantConnectModal 2-step OTP flow, DefinEdgeConnectModal credential
+//   flow) but were NEVER added to the SDK's `BROKER_FORM_SCHEMAS` map
+//   (mobile-sdk packages/rn/src/components/brokerFormSchema.ts — neither
+//   broker is in the `BrokerName` union at all). With the flag on and this
+//   Set empty, every broker routed to Phase3SdkBrokerModal, which mounts
+//   `<BrokerCredentialForm broker={brokerName}>`; that widget's initial-state
+//   seeding does `for (const f of baseSchema.fields)` where
+//   `baseSchema = BROKER_FORM_SCHEMAS[broker]` — `undefined` for these two —
+//   so the app crashed with a TypeError on the very first render
+//   (BrokerCredentialForm.tsx:159), on every tap of "Connect Arihant Capital"
+//   / "Connect DefinEdge Securities". Adding them here routes to their
+//   legacy modals, which is correct and complete today.
+//   RULE: any broker added to normalizeBrokerKey / the display tile list
+//   MUST either get a BROKER_FORM_SCHEMAS entry in the SDK repo, or be
+//   listed in this Set — otherwise the SDK lane crashes on an undefined
+//   schema for that broker. See also the defensive guard added in
+//   Phase3SdkBrokerModal.js the same day, which prevents this crash class
+//   even if a future broker is forgotten here.
+//
+// Otherwise the Set is intentionally kept small — keep it so future
+// near-term gaps have a documented home rather than scattering fallback
 // decisions across files.
-const SDK_LEGACY_FALLBACK = new Set([]);
+const SDK_LEGACY_FALLBACK = new Set(['Arihant Capital', 'DefinEdge Securities']);
 
 const useSdkBrokerFlow = () => {
   const v = String(Config?.REACT_APP_USE_SDK_BROKER_FLOW || '')
