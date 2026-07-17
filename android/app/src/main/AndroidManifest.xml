@@ -89,6 +89,15 @@
                 <data android:scheme="https" />
                 <data android:host="app-links.alphaquark.in" />
                 <data android:pathPrefix="/broker-callback" />
+                <!--
+                    Campaign smart links (WhatsApp/SMS/email).
+                    https://app-links.alphaquark.in/l/<tenant>?utm_*&dl=
+                    opens directly in the app when installed (verified App
+                    Link, no chooser). The backend SmartLinkRouter only
+                    renders its interstitial / Play-Store fallback when the
+                    app is NOT installed. Parsed in App.js → src/utils/smartLink.js.
+                -->
+                <data android:pathPrefix="/l" />
             </intent-filter>
         </activity>
 

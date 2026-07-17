@@ -104,6 +104,7 @@
     "react-native-paper": "^5.12.3",
     "react-native-permissions": "^5.2.4",
     "react-native-pie-chart": "^3.0.2",
+    "react-native-play-install-referrer": "^1.1.8",
     "react-native-progress": "^5.0.1",
     "react-native-progress-bar-horizontal": "^1.0.1",
     "react-native-progress-step-bar": "^1.0.0",
