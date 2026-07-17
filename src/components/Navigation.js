@@ -67,6 +67,8 @@ import Icon2 from 'react-native-vector-icons/Ionicons';
 import SignupScreen from '../screens/Authentication/SignupScreen';
 import WebViewScreen from './WebViewScreen';
 import LoginScreen from '../screens/Authentication/LoginScreen';
+import OnboardingScreen from '../screens/Authentication/OnboardingScreen';
+import PhoneLoginScreen from '../screens/Authentication/PhoneLoginScreen';
 import LogOutScreen from '../screens/Authentication/LogOutScreen';
 import ProfileScreen from '../screens/Home/ProfileScreen';
 import ResetPasswordScreen from '../screens/Authentication/ResetPassword';
@@ -1186,6 +1188,24 @@ const Navigation = ({userEmail, isAuthenticated}) => {
         <Stack.Screen
           name="Login"
           component={LoginScreen}
+          options={{headerShown: false}}
+        />
+        {/*
+          Phone-first login flow (Onboarding video carousel → PhoneLogin
+          capture), gated by config.phoneFirstLoginEnabled (default OFF).
+          Registration here is inert — SplashScreen only navigation.replace()s
+          to 'Onboarding' when the advisor has opted in; otherwise these
+          screens are simply never routed to. See SplashScreen.js +
+          ConfigContext.js.
+        */}
+        <Stack.Screen
+          name="Onboarding"
+          component={OnboardingScreen}
+          options={{headerShown: false}}
+        />
+        <Stack.Screen
+          name="PhoneLogin"
+          component={PhoneLoginScreen}
           options={{headerShown: false}}
         />
         <Stack.Screen
