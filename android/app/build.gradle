@@ -39,8 +39,8 @@ android {
         applicationId "com.aq.kaizenalpha"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 66
-        versionName "3.9.66"
+        versionCode 67
+        versionName "3.9.67"
 
         missingDimensionStrategy "store", "play"
         // ABI note (2026-06-08, web-parity emulator smoke): release APKs ship
