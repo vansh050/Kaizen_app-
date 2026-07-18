@@ -15,6 +15,7 @@
 import React, {useMemo} from 'react';
 import {AqSdkClient, AqSdkProvider, ExecuteAdviceOverlay as _MaybeExecuteAdviceOverlay} from '@alphaquark/mobile-sdk';
 import Config from 'react-native-config';
+import {getAuth} from '@react-native-firebase/auth';
 
 import {getAdvisorSubdomain} from '../utils/variantHelper';
 import {useConfig} from '../context/ConfigContext';
@@ -92,9 +93,27 @@ async function mintSession(userRef) {
     );
   }
   const subdomain = getTenantSubdomainForMint();
+  // Phase 1 of the SDK-mint end-user-auth hardening (2026-07-18): attach
+  // the signed-in user's Firebase ID token so the backend can verify the
+  // mint is for the caller's own account (observe mode today; per-tenant
+  // enforcement via advisor_config.sdk_mint_require_id_token). STRICTLY
+  // fail-open — no user / any error sends the request unchanged, so old
+  // flows keep working until enforcement is deliberately flipped.
+  let endUserIdToken = null;
+  try {
+    const u = getAuth().currentUser;
+    if (u) {
+      endUserIdToken = await u.getIdToken();
+    }
+  } catch (e) {
+    endUserIdToken = null;
+  }
   const headers = {'Content-Type': 'application/json'};
   if (subdomain) {
     headers['X-Advisor-Subdomain'] = subdomain;
+  }
+  if (endUserIdToken) {
+    headers.Authorization = `Bearer ${endUserIdToken}`;
   }
   const controller = new AbortController();
   const mintTimeout = setTimeout(() => controller.abort(), 10000);
