@@ -473,15 +473,29 @@ const MPInvestNowModal = ({ viewModel, actions }) => {
   useEffect(() => {
     if (consentChecked) setShowConsentNudge(false);
   }, [consentChecked]);
-  // Payment-step selection validity — MUST mirror the container's
-  // isStepValid(2) second clause: a one-time plan (no frequency options,
-  // `frequency.length === 0`) is valid WITHOUT a selectedCard; a recurring
-  // plan needs a frequency/duration card picked. The old button gated on a
-  // raw `!selectedCard`, which left one-time plans permanently disabled — and
-  // a disabled TouchableOpacity swallows the tap silently, so "Complete
-  // Investment" looked like a dead button on one-time plans (prod, 2026-07-18).
-  const paymentSelectionValid =
-    specificPlan?.frequency?.length === 0 || selectedCard !== null;
+  // Payment-step selection validity.
+  //
+  // The rule is "if there is anything to choose, you must choose it" — a card
+  // must be selected whenever the plan offers EITHER frequency/duration cards
+  // OR one-time option cards. Only a plan that offers no choice at all can
+  // proceed without a selection.
+  //
+  // Why not `frequency?.length === 0 || selectedCard !== null` (the 9667304
+  // form this replaces): `onetimeamount` is set ONLY by tapping an option card,
+  // so on a plan with `frequency.length === 0` AND a non-empty `onetimeOptions`
+  // that predicate short-circuited to true with nothing selected and let
+  // Complete fire `POST api/cashfree` with `amount: null`. The plan that
+  // prompted 9667304 wasn't exposed (its frequency was 'Need Basis', length 11)
+  // but that is luck, not design.
+  //
+  // This still fixes the original dead-button bug: the button is no longer
+  // `disabled`, so a plan with genuine choices gives visible "pick one"
+  // feedback instead of silently swallowing the tap, and a plan with no
+  // choices proceeds straight through.
+  const hasSelectableOptions =
+    (specificPlan?.frequency?.length || 0) > 0 ||
+    (planDetails?.onetimeOptions?.length || 0) > 0;
+  const paymentSelectionValid = !hasSelectableOptions || selectedCard !== null;
   const handleCompleteInvestmentPress = () => {
     // Breadcrumb — a "dead" Complete tap has burned two debugging sessions
     // (disabled-swallow 2026-07-16, RN-Modal offset touch targets 2026-07-18).
