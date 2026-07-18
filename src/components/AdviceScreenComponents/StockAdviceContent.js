@@ -19,7 +19,6 @@ import StockCardLoading from './StockCardLoading';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LottieView from 'lottie-react-native';
 import RecommendationSuccessModal from '../ModelPortfolioComponents/RecommendationSuccessModal';
-import {getLTPForSymbol} from './DynamicText/websocketPrice';
 import {useTrade} from '../../screens/TradeContext';
 
 import eventEmitter from '../EventEmitter';

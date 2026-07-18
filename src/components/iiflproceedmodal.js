@@ -16,7 +16,6 @@ import axios from 'axios';
 import Toast from 'react-native-toast-message';
 import {WebView} from 'react-native-webview';
 import {getAuth} from '@react-native-firebase/auth';
-import {auth} from '../utils/firebaseConfig';
 import server from '../utils/serverConfig';
 import {generateToken} from '../utils/SecurityTokenManager';
 import Config from 'react-native-config';

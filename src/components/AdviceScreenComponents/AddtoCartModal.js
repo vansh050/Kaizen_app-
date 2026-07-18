@@ -29,7 +29,6 @@ import { validateBrokerSession } from '../../utils/brokerSessionUtils';
 import { validateStockExchanges, applyKiteMarketProtection, resolveZerodhaSymbol } from '../../utils/brokerPublisher';
 import useZerodhaSymbolMap from '../../hooks/useZerodhaSymbolMap';
 import {useCart} from '../CartContext';
-import {getLTPForSymbol} from './DynamicText/websocketPrice';
 import {getLastKnownPrice} from './DynamicText/websocketPrice';
 import eventEmitter from '../EventEmitter';
 import AsyncStorage from '@react-native-async-storage/async-storage';
