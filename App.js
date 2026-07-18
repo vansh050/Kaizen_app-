@@ -3,6 +3,11 @@ import React, {useState, useEffect} from 'react';
 import {StatusBar, Text, TextInput, SafeAreaView, Linking, Alert} from 'react-native';
 import Toast from 'react-native-toast-message';
 import axios from 'axios';
+// Session-token migration Phase 1 — installs a fail-open axios request
+// interceptor that attaches Authorization: Bearer <firebase-id-token> to
+// our own API calls (observe-mode only, backend enforces nothing yet).
+// See src/utils/authTokenInterceptor.js.
+import './src/utils/authTokenInterceptor';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {getAuth, onAuthStateChanged} from '@react-native-firebase/auth';
 import notifee, {EventType} from '@notifee/react-native';
