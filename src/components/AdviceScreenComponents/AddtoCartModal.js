@@ -293,7 +293,7 @@ const AddToCartModal = ({
       setEdisStatus(response.data);
       console.log('AngleOne response', response.data);
     } catch (error) {
-      console.error('Error verifying eDIS status:', error);
+      console.log('[edis] status sync failed (handled):', error?.message);
     }
   };
 
@@ -310,7 +310,7 @@ const AddToCartModal = ({
       console.log('Dhan Reponse', response.data);
       setDhanEdisStatus(response.data);
     } catch (error) {
-      console.error('Error verifying eDIS status:', error);
+      console.log('[edis] status sync failed (handled):', error?.message);
     }
   };
 
@@ -1290,7 +1290,7 @@ const AddToCartModal = ({
           );
           setZerodhaDdpiStatus(response.data);
         } catch (error) {
-          console.error('Error verifying eDIS status:', error);
+          console.log('[edis] status sync failed (handled):', error?.message);
         }
       };
 
@@ -1299,7 +1299,14 @@ const AddToCartModal = ({
   }, [userDetails]);
 
   useEffect(() => {
-    if (userDetails && userDetails.user_broker === 'Zerodha') {
+    if (
+        userDetails &&
+        userDetails.user_broker === 'Zerodha' &&
+        // Server @extract_keys requires `edis`; the user doc has no such
+        // field today, so an unguarded POST is a guaranteed 400 on every
+        // load. Only sync when a boolean status actually exists.
+        typeof userDetails.edis === 'boolean'
+      ) {
       const verifyZerodhaEdis = async () => {
         try {
           const response = await axios.post(
@@ -1312,7 +1319,7 @@ const AddToCartModal = ({
           );
           setZerodhaDdpiStatus(response.data);
         } catch (error) {
-          console.error('Error verifying eDIS status:', error);
+          console.log('[edis] status sync failed (handled):', error?.message);
         }
       };
 

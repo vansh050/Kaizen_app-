@@ -71,9 +71,13 @@ const ModalPFCard = ({
   // user still lands right next to the Accept Rebalance button.
   const handleInvestClick = () => {
     navigation.navigate('Home');
+    // Small fixed delay so the tab switch has started before the Home card
+    // opens its modal. Deliberately NOT InteractionManager: Home hosts
+    // perpetually-animating components (tickers, social-proof toasts), so
+    // runAfterInteractions can stall for seconds and the open feels dead.
     setTimeout(() => {
       eventEmitter.emit('openRebalanceFlow', { modelName });
-    }, 400);
+    }, 250);
   };
 
   const [strategyDetails, setStrategyDetails] = useState(null);

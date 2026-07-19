@@ -173,7 +173,7 @@ const StockAdvices = React.memo(({ userEmail, orderscreen, type }) => {
       setEdisStatus(response.data);
       console.log('AngleOne response', response.data);
     } catch (error) {
-      //  console.error("Error verifying eDIS status:", error);
+      //  console.log('[edis] status sync failed (handled):', error?.message);
     }
   };
 
@@ -190,7 +190,7 @@ const StockAdvices = React.memo(({ userEmail, orderscreen, type }) => {
       console.log('Dhan Reponse', response.data);
       setDhanEdisStatus(response.data);
     } catch (error) {
-      //  console.error("Error verifying eDIS status:", error);
+      //  console.log('[edis] status sync failed (handled):', error?.message);
     }
   };
 
@@ -2849,7 +2849,7 @@ const StockAdvices = React.memo(({ userEmail, orderscreen, type }) => {
           );
           setZerodhaDdpiStatus(response.data);
         } catch (error) {
-          //    console.error("Error verifying eDIS status:", error);
+          //    console.log('[edis] status sync failed (handled):', error?.message);
         }
       };
 
@@ -2858,7 +2858,14 @@ const StockAdvices = React.memo(({ userEmail, orderscreen, type }) => {
   }, [userDetails, broker]);
 
   useEffect(() => {
-    if (userDetails && userDetails.user_broker === 'Zerodha') {
+    if (
+        userDetails &&
+        userDetails.user_broker === 'Zerodha' &&
+        // Server @extract_keys requires `edis`; the user doc has no such
+        // field today, so an unguarded POST is a guaranteed 400 on every
+        // load. Only sync when a boolean status actually exists.
+        typeof userDetails.edis === 'boolean'
+      ) {
       const verifyZerodhaEdis = async () => {
         try {
           const response = await axios.post(
@@ -2872,7 +2879,7 @@ const StockAdvices = React.memo(({ userEmail, orderscreen, type }) => {
           console.log('response edit::', response.data);
           setZerodhaDdpiStatus(response.data);
         } catch (error) {
-          //   console.error("Error verifying eDIS status:", error);
+          //   console.log('[edis] status sync failed (handled):', error?.message);
         }
       };
 

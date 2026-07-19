@@ -543,7 +543,17 @@ const RebalanceCard = ({
       const myName = typeof modelName === 'string' ? modelName : modelName?.name;
       if (normalize(payload.modelName) === normalize(myName)) {
         payload._claimed = true;
-        handleAcceptClick();
+        // Mirror the Accept Rebalance button exactly (same handler pair) —
+        // handleChangeCheck opens the conditionally-mounted change-detail
+        // modal, which is safe to re-open repeatedly. Jumping straight to
+        // handleAcceptClick re-showed the always-mounted preference Modal,
+        // which renders BLANK on re-show under the new architecture and
+        // freezes the screen behind an invisible window.
+        if (isPendingVerification) {
+          handlePendingRefresh();
+        } else {
+          handleChangeCheck();
+        }
       }
     };
     eventEmitter.on('openRebalanceFlow', handleOpenRebalanceFlow);
@@ -839,14 +849,20 @@ const RebalanceCard = ({
         </LinearGradient>
       </View>
 
-      {/* Step 1: Rebalance Preference Modal */}
-      <RebalancePreferenceModal
-        showCheckboxModal={showCheckboxModal}
-        setShowCheckboxModal={setShowCheckboxModal}
-        setSelectedOption={setSelectedOption}
-        selectedOption={selectedOption}
-        handleConfirmPreference={handleConfirmPreference}
-      />
+      {/* Step 1: Rebalance Preference Modal. Mounted CONDITIONALLY on
+          purpose: an always-mounted RN Modal that toggles `visible` renders
+          BLANK on re-show under the new architecture — the window exists and
+          eats every touch while showing nothing (screen "freezes"). A fresh
+          mount per open is immune. */}
+      {showCheckboxModal && (
+        <RebalancePreferenceModal
+          showCheckboxModal={showCheckboxModal}
+          setShowCheckboxModal={setShowCheckboxModal}
+          setSelectedOption={setSelectedOption}
+          selectedOption={selectedOption}
+          handleConfirmPreference={handleConfirmPreference}
+        />
+      )}
 
       <Modal
         visible={modalVisible}
