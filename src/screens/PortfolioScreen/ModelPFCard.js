@@ -170,6 +170,12 @@ const ModalPFCard = ({
         totalInvested,
         net_portfolio_updated,
         cardColor,
+        // Invested-view upgrade (2026-07-19): surface data the container
+        // already had so the card can show real metrics instead of a bare
+        // "₹X/-" row. specificPlan is the latest rebalance entry passed by
+        // PortfolioScreen's processedData.
+        holdingsCount: validOrderResults?.length || 0,
+        lastRebalanceDate: specificPlan?.rebalanceDate || null,
       }}
       actions={{
         onCardPress: handleCardClick,
