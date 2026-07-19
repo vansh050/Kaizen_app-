@@ -39,8 +39,8 @@ android {
         applicationId "com.aq.kaizenalpha"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 68
-        versionName "3.9.68"
+        versionCode 69
+        versionName "3.9.69"
 
         missingDimensionStrategy "store", "play"
         // ABI note (2026-06-08, web-parity emulator smoke): release APKs ship
@@ -149,3 +149,26 @@ dependencies {
 
 apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
 apply plugin: "com.google.gms.google-services"
+
+// Brand-asset guard (2026-07-19): this fork must NEVER ship the upstream
+// AlphaQuark launcher icon — zamzam 6.4.4 went to Play with the wrong logo
+// after an upstream sync clobbered res/mipmap. Fails every build whose
+// launcher icon matches a known upstream icon hash.
+def upstreamAqIconHashes = ["4202d60d4c51011afc31582434c11adf","5470106c93edb8328ce36a907c1c6fc1","68ae2d8228e3c37967f70a199ce5e84d","6f328e1c9673e74a36a428c4ff8576b2","85339971c79729c348292b45c5852523","b456f35572b74c6fd3f0ab688ef5fccb","ba473df067ba6f144b96edd94907a3a0","ccde0716835756e4645683b80a23147e","d2f34777fca175044da9287173d8aecc","ff441887d26fef7c44d7fb2056441495"]
+tasks.register("brandIconAudit") {
+    doLast {
+        def md = java.security.MessageDigest.getInstance("MD5")
+        ["ic_launcher.png", "ic_launcher_foreground.png"].each { name ->
+            ["mdpi","hdpi","xhdpi","xxhdpi","xxxhdpi"].each { d ->
+                def f = file("src/main/res/mipmap-${d}/${name}")
+                if (f.exists()) {
+                    def hash = md.digest(f.bytes).collect { String.format("%02x", it) }.join()
+                    if (upstreamAqIconHashes.contains(hash)) {
+                        throw new GradleException("BRAND GUARD: ${f} is the upstream AlphaQuark icon — restore this fork's brand icon before building (see git history of res/mipmap).")
+                    }
+                }
+            }
+        }
+    }
+}
+preBuild.dependsOn("brandIconAudit")
