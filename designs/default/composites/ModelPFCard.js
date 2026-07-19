@@ -31,6 +31,9 @@
  *   }
  *   actions = {
  *     onCardPress,           // () => void — navigate to AfterSubscriptionScreen
+ *     onInvestPress,         // () => void — pending-state Invest CTA: route to the
+ *                             //   Home tab + trigger Accept Rebalance (falls back
+ *                             //   to onCardPress when absent)
  *   }
  *   slots = {
  *     PortfolioPercentageSlot, // ReactElement — <PortfolioPercentage> pre-built by container
@@ -64,7 +67,7 @@ const ModelPFCard = ({ viewModel, actions, slots }) => {
     holdingsCount = 0,
     lastRebalanceDate = null,
   } = viewModel || {};
-  const { onCardPress = () => {} } = actions || {};
+  const { onCardPress = () => {}, onInvestPress } = actions || {};
   const { PortfolioPercentageSlot = null } = slots || {};
 
   const invested = Number(totalInvested) > 0;
@@ -142,10 +145,14 @@ const ModelPFCard = ({ viewModel, actions, slots }) => {
               . Complete your first investment to start tracking returns here.
             </Text>
           </View>
-          <View style={styles.pendingCta}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={onInvestPress || onCardPress}
+            style={styles.pendingCta}
+          >
             <Text style={styles.pendingCtaText}>Invest</Text>
             <ChevronRightIcon style={styles.pendingCtaIcon} />
-          </View>
+          </TouchableOpacity>
         </View>
       )}
     </TouchableOpacity>

@@ -8,7 +8,6 @@ import {
   Text,
   TouchableOpacity,
   Image,
-  FlatList,
   Dimensions,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
@@ -733,26 +732,19 @@ const AfterSubscriptionScreen = ({route}) => {
                         </View>
                       )}
                       {tableData?.length > 0 ? (
-                        <FlatList
-                          data={tableData}
-                          keyExtractor={(item, idx) => item.symbol + idx}
-                          scrollEnabled={true}
-                          nestedScrollEnabled={true}
-                          contentContainerStyle={{paddingHorizontal: 12, paddingTop: 10, paddingBottom: 16, gap: 10}}
-                          ListHeaderComponent={
-                            <View style={styles.tabIntro}>
-                              <Text style={styles.tabIntroTitle}>Your current holdings</Text>
-                              <Text style={styles.tabIntroBody}>
-                                Stocks currently recorded in this model portfolio. These can differ from the target mix until the latest rebalance is completed.
-                              </Text>
-                            </View>
-                          }
-                          ListFooterComponent={
-                            <Text style={{fontSize: 9, fontFamily: 'Poppins-Regular', color: '#9CA3AF', marginTop: 4, textAlign: 'center'}}>
-                              Prices may be delayed.
+                        // Plain mapped Views, NOT a FlatList: this scene lives
+                        // inside the screen's outer ScrollView, where a nested
+                        // VirtualizedList loses windowing anyway and RN logs
+                        // "VirtualizedLists should never be nested". Holdings
+                        // lists are small, so mapping is the correct scroller.
+                        <View style={{paddingHorizontal: 12, paddingTop: 10, paddingBottom: 16, gap: 10}}>
+                          <View style={styles.tabIntro}>
+                            <Text style={styles.tabIntroTitle}>Your current holdings</Text>
+                            <Text style={styles.tabIntroBody}>
+                              Stocks currently recorded in this model portfolio. These can differ from the target mix until the latest rebalance is completed.
                             </Text>
-                          }
-                          renderItem={({item}) => {
+                          </View>
+                          {tableData.map((item, idx) => {
                             const hasPrice = item.currentPrice !== 'N/A';
                             const hasReturns = item.returns !== 'N/A';
                             // Web parity (TerminateStrategyModal.js:230 +
@@ -764,7 +756,7 @@ const AfterSubscriptionScreen = ({route}) => {
                             const isPositive = hasReturns && item.returns >= 0;
                             const displaySymbol = item.symbol.replace(/-EQ$|-BE$|-N$/, '');
                             return (
-                              <View style={{
+                              <View key={item.symbol + idx} style={{
                                 backgroundColor: '#fff',
                                 borderRadius: 12,
                                 borderLeftWidth: 3,
@@ -834,8 +826,11 @@ const AfterSubscriptionScreen = ({route}) => {
                                 </View>
                               </View>
                             );
-                          }}
-                        />
+                          })}
+                          <Text style={{fontSize: 9, fontFamily: 'Poppins-Regular', color: '#9CA3AF', marginTop: 4, textAlign: 'center'}}>
+                            Prices may be delayed.
+                          </Text>
+                        </View>
                       ) : (
                         <EmptyStateInfoMP
                           title="No Holdings Yet"

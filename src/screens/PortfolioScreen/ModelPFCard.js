@@ -22,6 +22,7 @@ import PortfolioPercentage from '../../components/AdviceScreenComponents/Dynamic
 import { isOrderRejected, isOrderSuccess, isOrderPending } from '../../utils/orderStatusUtils';
 import { useTrade } from '../TradeContext';
 import portfolioEvents, { PORTFOLIO_EVENTS } from '../../utils/portfolioEvents';
+import eventEmitter from '../../components/EventEmitter';
 import MPF_1 from '../../assets/Mpholder1.png';
 
 const ModalPFCard = ({
@@ -61,6 +62,18 @@ const ModalPFCard = ({
     navigation.navigate('AfterSubscriptionScreen', {
       fileName: modelName,
     });
+  };
+
+  // "Invest" CTA on the pending state: land the user on the Home tab's
+  // Portfolio Recommendations card and trigger its Accept Rebalance flow
+  // (RebalanceCard listens for this event; Home stays mounted in the tab
+  // navigator). If the card isn't rendered yet the event is a no-op and the
+  // user still lands right next to the Accept Rebalance button.
+  const handleInvestClick = () => {
+    navigation.navigate('Home');
+    setTimeout(() => {
+      eventEmitter.emit('openRebalanceFlow', { modelName });
+    }, 400);
   };
 
   const [strategyDetails, setStrategyDetails] = useState(null);
@@ -179,6 +192,7 @@ const ModalPFCard = ({
       }}
       actions={{
         onCardPress: handleCardClick,
+        onInvestPress: handleInvestClick,
       }}
       slots={{
         PortfolioPercentageSlot: (

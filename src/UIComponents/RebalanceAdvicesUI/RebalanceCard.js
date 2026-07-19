@@ -528,6 +528,30 @@ const RebalanceCard = ({
     }
   };
 
+  // Portfolio-tab "Invest" CTA (ModelPFCard pending state) routes here: it
+  // switches to the Home tab and emits this event so the matching card runs
+  // the same Accept Rebalance click. Registered every render (no deps) so the
+  // handler never closes over stale state; cleanup keeps it single-subscribed.
+  useEffect(() => {
+    const normalize = (v) => String(v ?? '').replace(/_/g, ' ').trim().toLowerCase();
+    const handleOpenRebalanceFlow = (payload) => {
+      // _claimed: HomeScreen can mount more than one RebalanceCard for the
+      // same model (multiple sections). Listeners run synchronously on the
+      // same payload object, so the first matching card claims the event —
+      // otherwise every twin opens its own (stacked, touch-eating) modal.
+      if (!payload?.modelName || payload._claimed) return;
+      const myName = typeof modelName === 'string' ? modelName : modelName?.name;
+      if (normalize(payload.modelName) === normalize(myName)) {
+        payload._claimed = true;
+        handleAcceptClick();
+      }
+    };
+    eventEmitter.on('openRebalanceFlow', handleOpenRebalanceFlow);
+    return () => {
+      eventEmitter.off('openRebalanceFlow', handleOpenRebalanceFlow);
+    };
+  });
+
   const handleChangeCheck = () => {
     try {
       console.log("Here DATA----", userExecutionFinal, matchingFailedTrades);
