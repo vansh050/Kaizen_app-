@@ -31,6 +31,7 @@ const InactivityProvider = ({ children, onAppForeground }) => {
   }, [onAppForeground]);
 
   const handleLogout = () => {
+    AsyncStorage.removeItem('aq_account_email').catch(() => {});
     auth().signOut().then(() => {
       Alert.alert('Logged out', 'You have been logged out due to inactivity.');
     }).catch(error => {

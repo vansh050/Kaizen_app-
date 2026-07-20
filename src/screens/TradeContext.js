@@ -9,7 +9,9 @@ import React, {
 } from 'react';
 import axios from 'axios';
 import CryptoJS from 'react-native-crypto-js';
-import {getAuth} from '@react-native-firebase/auth';
+import {getAuth, onAuthStateChanged} from '@react-native-firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import eventEmitter from '../components/EventEmitter';
 import server from '../utils/serverConfig';
 import {fetchFunds} from '../FunctionCall/fetchFunds';
 import {fetchBrokerAllHoldings} from '../FunctionCall/fetchBrokerAllHoldings';
@@ -19,6 +21,24 @@ import {fetchOrderBook, fetchPendingOrders} from '../services/BrokerOrderBookAPI
 import {getConfigData, isUserDataComplete} from '../utils/storageUtils';
 import Config from 'react-native-config';
 const TradeContext = createContext();
+
+// Account-identity fallback for Apple sign-ins. Firebase's
+// auth.currentUser.email is authoritative when present, but Apple can
+// withhold the email (null) or supply a @privaterelay.appleid.com alias
+// for the life of the Firebase user — while every backend record
+// (subscription, plans, clientlist) is keyed by the REAL email the user
+// typed on EmailScreenAppleLogin. completeAppleSignIn persists that
+// resolved identity under this key; every call-time email derivation
+// falls back to it. Google flows never hit the fallback.
+const ACCOUNT_EMAIL_KEY = 'aq_account_email';
+const resolveStoredAccountEmail = async () => {
+  try {
+    const v = await AsyncStorage.getItem(ACCOUNT_EMAIL_KEY);
+    return v ? v.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+};
 import {generateToken} from '../utils/SecurityTokenManager';
 import {getAdvisorSubdomain} from '../utils/variantHelper';
 import {isOrderSuccess, isOrderRejected} from '../utils/orderStatusUtils';
@@ -54,7 +74,42 @@ export const TradeProvider = ({children}) => {
 
   const auth = getAuth();
   const user = auth.currentUser;
-  const userEmail = user?.email;
+  // Apple sign-in identity fallback: hydrated on every auth-state change
+  // so the [userEmail, configData] effects fire even when
+  // currentUser.email is null / a private-relay alias (Apple flows).
+  // Without this, the effects' `if (userEmail && ...)` gates never open
+  // for Apple users and Home renders permanently empty (2026-07-20).
+  const [accountEmailFallback, setAccountEmailFallback] = useState(null);
+  useEffect(() => {
+    // Two hydration triggers: (1) auth-state change covers cold-start
+    // restore of an existing Apple session; (2) the explicit event covers
+    // FIRST sign-in, where signInWithCredential fires the auth listener
+    // BEFORE the user has typed their email on EmailScreenAppleLogin —
+    // completeAppleSignIn emits after persisting the resolved identity.
+    const unsub = onAuthStateChanged(getAuth(), async (u) => {
+      if (!u) {
+        setAccountEmailFallback(null);
+        return;
+      }
+      const stored = await resolveStoredAccountEmail();
+      setAccountEmailFallback(stored);
+    });
+    const onResolved = (email) =>
+      setAccountEmailFallback(email ? String(email).toLowerCase() : null);
+    eventEmitter.on('aq:accountEmailResolved', onResolved);
+    return () => {
+      unsub();
+      eventEmitter.off('aq:accountEmailResolved', onResolved);
+    };
+  }, []);
+  // Firebase preserves the case of Apple's identityToken email
+  // (Google always issues lowercase). Backend GET /api/user/getUser/:email
+  // auto-lowercases but backend POST /api/user/ stores VERBATIM — so every
+  // downstream URL that embeds userEmail must match the lowercase record
+  // we now write in completeAppleSignIn. Lowercase once at the source.
+  const userEmail = user?.email
+    ? user.email.toLowerCase()
+    : accountEmailFallback;
 
   const [configData, setConfigData] = useState(null);
   const [configLoading, setConfigLoading] = useState(true);
@@ -404,7 +459,14 @@ export const TradeProvider = ({children}) => {
   const getModelPortfolioStrategyDetails = async () => {
     const auth = getAuth();
     const user = auth.currentUser;
-    const userEmail = user?.email;
+    // Firebase preserves the case of Apple's identityToken email
+  // (Google always issues lowercase). Backend GET /api/user/getUser/:email
+  // auto-lowercases but backend POST /api/user/ stores VERBATIM — so every
+  // downstream URL that embeds userEmail must match the lowercase record
+  // we now write in completeAppleSignIn. Lowercase once at the source.
+  const userEmail = user?.email
+    ? user.email.toLowerCase()
+    : await resolveStoredAccountEmail();
 
     try {
       setIsDatafetchingMP(true);
@@ -474,7 +536,14 @@ export const TradeProvider = ({children}) => {
   const getModelPortfolioRepairTrades = async portfolios => {
     const auth = getAuth();
     const user = auth.currentUser;
-    const userEmail = user?.email;
+    // Firebase preserves the case of Apple's identityToken email
+  // (Google always issues lowercase). Backend GET /api/user/getUser/:email
+  // auto-lowercases but backend POST /api/user/ stores VERBATIM — so every
+  // downstream URL that embeds userEmail must match the lowercase record
+  // we now write in completeAppleSignIn. Lowercase once at the source.
+  const userEmail = user?.email
+    ? user.email.toLowerCase()
+    : await resolveStoredAccountEmail();
 
     if (!userEmail || !configData) return;
     const list = Array.isArray(portfolios) ? portfolios : [];
@@ -552,10 +621,23 @@ export const TradeProvider = ({children}) => {
 const getAllTrades = async () => {
   const auth = getAuth();
   const user = auth.currentUser;
-  const userEmail = user?.email;
+  // Firebase preserves the case of Apple's identityToken email
+  // (Google always issues lowercase). Backend GET /api/user/getUser/:email
+  // auto-lowercases but backend POST /api/user/ stores VERBATIM — so every
+  // downstream URL that embeds userEmail must match the lowercase record
+  // we now write in completeAppleSignIn. Lowercase once at the source.
+  const userEmail = user?.email
+    ? user.email.toLowerCase()
+    : await resolveStoredAccountEmail();
 
   if (!userEmail) {
-    console.error('[Trade Fetch] Error: User email is missing');
+    // TradeProvider mounts before auth resolves. The [userEmail, configData]
+    // useEffect fires once as soon as both look truthy from the top-level
+    // closure — occasionally BEFORE Firebase has restored the on-disk
+    // session on cold start (async). Once auth restores, the useEffect
+    // fires again with a valid user. Warn (not error) so we don't red-
+    // banner LogBox for a transient startup state.
+    console.warn('[Trade Fetch] Skipped — auth not ready yet');
     setIsDatafetching(false);
     return;
   }
@@ -883,6 +965,22 @@ const getAllTrades = async () => {
   };
 
   const getPlanList = async () => {
+    // Re-derive at call time — see comment in getUserDeatils. This was
+    // using the stale top-level closure and hitting
+    // /api/sendnotification/undefined on fresh Apple sign-ins, which is
+    // exactly why the Plans / Model Portfolio catalog rendered empty
+    // after Apple login even though the same account showed plans fine
+    // after a subsequent Google login (Firebase cached currentUser
+    // populates the closure early enough for Google flows).
+    const authNow = getAuth();
+    const currentUser = authNow.currentUser;
+    const userEmail = currentUser?.email
+      ? currentUser.email.toLowerCase()
+      : await resolveStoredAccountEmail();
+    if (!userEmail) {
+      console.warn('[getPlanList] skipped — auth not ready yet');
+      return;
+    }
     try {
       const response = await axios({
         method: 'get',
@@ -897,7 +995,6 @@ const getAllTrades = async () => {
           ),
         },
       });
-      console.log("RESPONSE HERE FOR VALIDITY---cccccccccccccccccccc------", configData?.config?.REACT_APP_HEADER_NAME || configData?.subdomain || getAdvisorSubdomain(),response?.data)
       setPlanList(response?.data?.isValid);
       return response?.data?.isValid;
     } catch (planError) {
@@ -1038,7 +1135,24 @@ const getAllTrades = async () => {
     }
   }, []);
 
-  const getUserDeatils = async () => {
+  const getUserDeatils = async (attempt = 0) => {
+    // Re-derive at call time. TradeProvider mounts BEFORE auth resolves
+    // (it wraps the app in App.js), so the top-level `userEmail` closure at
+    // line 62 is `undefined` when a fresh Apple sign-in lands. Google usually
+    // has a cached session so the top-level closure is populated; Apple's
+    // fresh identityToken path populates auth.currentUser AFTER TradeProvider
+    // has already captured `undefined`. Reading fresh from auth.currentUser
+    // here (matching getModelPortfolioStrategyDetails / getAllTrades) makes
+    // this function work regardless of when auth resolved relative to mount.
+    const authNow = getAuth();
+    const currentUser = authNow.currentUser;
+    const userEmail = currentUser?.email
+      ? currentUser.email.toLowerCase()
+      : await resolveStoredAccountEmail();
+    if (!userEmail) {
+      console.warn('[getUserDeatils] skipped — no authenticated user yet');
+      return;
+    }
     try {
       const response = await axios.get(
         `${server.server.baseUrl}api/user/getUser/${userEmail}`,
@@ -1082,6 +1196,20 @@ const getAllTrades = async () => {
       console.log('🔍 [BROKER DEBUG] brokerStatus SET TO:', user?.connect_broker_status);
       return user;
     } catch (error) {
+      // 404 on first-time Apple sign-in: TradeProvider's [userEmail,
+      // configData] useEffect can fire the moment onAuthStateChanged
+      // propagates, which may race ahead of LoginScreen's completeAppleSignIn
+      // POST that actually creates the Mongo record. Retry a few times so a
+      // fresh Apple signup doesn't strand the user on an empty Home.
+      const status = error?.response?.status;
+      if (status === 404 && attempt < 3) {
+        const delayMs = 1500 * (attempt + 1);
+        console.warn(
+          `[getUserDeatils] 404 on attempt ${attempt + 1} — retrying in ${delayMs}ms`,
+        );
+        await new Promise(r => setTimeout(r, delayMs));
+        return getUserDeatils(attempt + 1);
+      }
       console.error('Error fetching user details:', error.message);
     }
   };
@@ -1111,6 +1239,13 @@ const getAllTrades = async () => {
       sid,
       serverId,
     } = userDetails;
+
+    // Re-derive at call time — see comment in getUserDeatils.
+    const authNow = getAuth();
+    const currentUser = authNow.currentUser;
+    const userEmail = currentUser?.email
+      ? currentUser.email.toLowerCase()
+      : await resolveStoredAccountEmail();
 
     try {
       const fetchedFunds = await fetchFunds(
@@ -1142,6 +1277,12 @@ const getAllTrades = async () => {
     // just reconnect. Migration modal should only fire after an
     // explicit reconnect action by the user. User-reported 2026-04-29.
     const silent = opts.silent === true;
+    // Re-derive at call time — see comment in getUserDeatils.
+    const authNow = getAuth();
+    const currentUser = authNow.currentUser;
+    const userEmail = currentUser?.email
+      ? currentUser.email.toLowerCase()
+      : await resolveStoredAccountEmail();
     if (!userEmail) return;
     try {
       const updatedUser = await getUserDeatils();

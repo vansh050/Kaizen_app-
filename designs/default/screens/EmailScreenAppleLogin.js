@@ -61,7 +61,7 @@ const EmailScreenAppleLogin = ({ viewModel, actions }) => {
                             fontSize: 22,
                         }}
                     >
-                        Enter Your Email
+                        Your Account Email
                     </Text>
                     <Text
                         variant="body"
@@ -74,14 +74,18 @@ const EmailScreenAppleLogin = ({ viewModel, actions }) => {
                             paddingHorizontal: 10,
                         }}
                     >
-                        We need your email address to complete the Apple Sign-In process. Apple has hidden your email for privacy.
+                        We identify your account, plans and subscriptions by
+                        email. Enter the email you'd like to use for your
+                        account — if you've subscribed before, use that same
+                        email so your plans appear here. It's used only to
+                        identify your account — never for marketing.
                     </Text>
 
                     <View style={styles.inputContainer}>
                         <Icon Component={Mail} size={16} color="rgba(100, 199, 59, 1)" style={{ marginRight: 10 }} />
                         <TextInput
                             style={styles.input}
-                            placeholder="Enter your email"
+                            placeholder="Email address"
                             placeholderTextColor="#9E9E9E"
                             value={email}
                             onChangeText={(text) => onEmailChange(text.toLowerCase())}

@@ -52,6 +52,8 @@ const LogoutScreen = ({ navigation }) => {
                 }
                 await signOut(auth);
                 await AsyncStorage.removeItem('cartItems');
+                // Apple sign-in identity fallback — must not leak across accounts.
+                await AsyncStorage.removeItem('aq_account_email');
                 setUserDetails(null);
                 setHasFetchedTrades(false);
                 setIsProfileCompleted(false);
