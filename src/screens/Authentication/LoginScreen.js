@@ -435,26 +435,32 @@ const LoginScreen = () => {
 
             if (response) {
                 const user = response.user;
-                // Usable email = a REAL address. Apple's "Hide My Email"
-                // gives Firebase a @privaterelay.appleid.com alias — it is
-                // non-null but is NOT the identity the user's subscription /
-                // plans / clientlist rows live under (backend keys everything
-                // by the real email), so treat it like "no email" and collect
-                // the real one. appleEmail only lands on the very first
-                // authorization and can be a relay alias too.
-                const isPrivateRelayEmail = (e) =>
-                    /@privaterelay\.appleid\.com$/i.test(String(e || ''));
-                const userEmail =
-                    [user.email, appleEmail].find(
-                        (e) => e && !isPrivateRelayEmail(e),
-                    ) || null;
+                // Apple ALWAYS returns an email — either the real address
+                // ("Share My Email") or a @privaterelay.appleid.com alias
+                // ("Hide My Email"). The relay is a real, forwarding address
+                // and therefore a valid, STABLE account identity (it is the
+                // same alias on every login for this Apple ID + app). Per App
+                // Store Review Guideline 4 (Design → Sign in with Apple) we
+                // MUST use the email the Authentication Services framework
+                // provides and MUST NOT require the user to type it — so we
+                // accept whatever Apple gives, relay included, as the identity.
+                //   • appleEmail is populated ONLY on the first authorization.
+                //   • user.email (Firebase) carries it on every subsequent
+                //     login, since Firebase persists the address from first
+                //     sign-in.
+                // Account-linking to a different (real-email) account is a
+                // separate, OPTIONAL, user-initiated flow after login — never
+                // a gate here (that mandatory email screen is exactly what
+                // Guideline 4 rejects).
+                const userEmail = user.email || appleEmail || null;
                 if (!userEmail) {
+                    // Should not happen after a valid first authorization
+                    // (Apple always supplies an email and Firebase persists
+                    // it). If it somehow does, surface an error rather than
+                    // blocking on an email-entry screen (Guideline 4).
                     setLoading(false);
-                    navigation.navigate('EmailScreenAppleLogin', {
-                        onSubmit: async (collectedEmail) => {
-                            if (collectedEmail) await completeAppleSignIn(user, collectedEmail, fullName);
-                        },
-                    });
+                    setError('Apple did not return an email for this account. Please try signing in again.');
+                    setErrorShow(true);
                     return;
                 }
                 await completeAppleSignIn(user, userEmail, fullName);
