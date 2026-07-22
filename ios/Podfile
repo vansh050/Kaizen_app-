@@ -5,7 +5,7 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
-platform :ios, min_ios_version_supported
+platform :ios, '15.1'
 prepare_react_native_project!
 
 linkage = ENV['USE_FRAMEWORKS']
@@ -24,11 +24,14 @@ target 'AlphaQuark' do
   pod 'GTMAppAuth', :modular_headers => true
   pod 'GTMSessionFetcher', :modular_headers => true
   pod 'AppAuth', :modular_headers => true
+  pod 'razorpay-pod', '1.5.0'
 
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.
-    :app_path => "#{Pod::Config.instance.installation_root}/.."
+    :app_path => "#{Pod::Config.instance.installation_root}/..",
+    :fabric_enabled => false,
+    :new_arch_enabled => false
   )
 
   target 'AlphaQuarkTests' do
@@ -44,5 +47,32 @@ target 'AlphaQuark' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # Ensure DWARF with dSYM is enabled for Hermes and Razorpay
+    installer.pods_project.targets.each do |target|
+      if ['hermes', 'hermes-engine', 'razorpay-pod'].include? target.name
+        target.build_configurations.each do |config|
+          config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
+        end
+      end
+    end
+
+    # Disable User Script Sandboxing for all targets (fixes rsync permission issues).
+    # Pods project handles itself; the main AlphaQuark.xcodeproj must be patched
+    # separately or rsync in the [CP] Embed Pods Frameworks phase is blocked by
+    # macOS sandbox on Xcode 15+, failing the build with code 65.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
+      end
+    end
+    installer.aggregate_targets.each do |aggregate_target|
+      aggregate_target.user_project.native_targets.each do |target|
+        target.build_configurations.each do |config|
+          config.build_settings['ENABLE_USER_SCRIPT_SANDBOXING'] = 'NO'
+        end
+      end
+      aggregate_target.user_project.save
+    end
   end
 end
