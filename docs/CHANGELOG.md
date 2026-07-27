@@ -4,6 +4,16 @@ All notable changes to the AlphaQuark B2B Mobile App are documented here.
 
 ---
 
+## [unreleased] - 2026-07-27 — fix(digio): use backend-authoritative tenant policy
+
+- Digio is enabled only when nested backend config explicitly returns boolean
+  `true`; defaults, cached values, checkout, and recovery now share that rule.
+- Removed tenant/build-environment gating from shared checkout code.
+- Kaizen remains explicitly `false / beforePayment`, so its app flow and backend
+  pre-payment gate remain disabled; backend enforcement is from `eb6fe6d`.
+
+---
+
 ## [unreleased] - 2026-07-13 — fix(login): show bundled logo while advisor config loads (not a blank box)
 
 `renderLogo`'s `configLoading` branch returned a blank `<View>`, so the brand mark
@@ -8005,4 +8015,3 @@ Each entry follows:
 ### Removed (removed features)
 ### Security (security-related changes)
 ```
-

@@ -449,6 +449,17 @@ files on first run).
 - `savePendingDigio` / `getPendingDigio` persist a pending state in AsyncStorage so the modal can recover from app kill mid-signing
 - `digioSuccessModal` UI confirms completion before payment commit
 
+**Backend-owned Digio enablement and payment gate (2026-07-27).**
+`AppAdvisor.digioConfig.digioEnabled` is the only enablement source. The app
+accepts only the explicit boolean `true`; missing, stale, string, or malformed
+values disable Digio. `ConfigContext` reads the nested value from
+`/api/app-advisor/get`, AsyncStorage normalizes it, and checkout/recovery use the
+same helper. Tenant/build environment flags no longer decide this behavior.
+The backend independently enforces `enabled + beforePayment` on Cashfree, PayU,
+and Razorpay order creation and returns `DIGIO_REQUIRED` when no valid signature
+exists. Kaizen is explicitly configured `false / beforePayment`, so neither the
+app Digio flow nor the backend pre-payment gate is active for this tenant.
+
 **Digio skip check — `isDigioAlreadyCompleted(planId)` (authoritative, matches web; 2026-06-18)**
 
 At pay-time `handleDigioPayment()` MUST decide whether the signer already has a
