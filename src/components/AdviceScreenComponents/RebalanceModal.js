@@ -54,6 +54,7 @@ import { convertResponse } from '../../utils/tradeUtils';
 import { isZerodhaSellAuthorized } from '../../utils/zerodhaDdpiGate';
 import useWebSocketCurrentPrice from '../../FunctionCall/useWebSocketCurrentPrice';
 import useSdkClient from '../../sdk/useSdkClient';
+import {throwIfSdkNotSent} from '../../utils/sdkNotSent';
 
 const isSdkExecuteAdviceEnabled = () => {
   const v = String(Config?.REACT_APP_USE_SDK_EXECUTE_ADVICE || '').trim().toLowerCase();
@@ -1108,6 +1109,7 @@ const RebalanceModal = ({
           // cautionary listing) — RecommendationSuccessModal then
           // showed "All Orders Placed Successfully" for orders the
           // broker had actually rejected. Pass through unchanged.
+          throwIfSdkNotSent(sdkResult);
           checkData = sdkResult?.rows || [];
           console.log('[RebalanceModal] SDK executeAdvice (Fyers) result:', sdkResult?.status, sdkResult?.rows?.length, 'rows');
         } catch (sdkErr) {
@@ -1275,6 +1277,20 @@ const RebalanceModal = ({
     } catch (error) {
       setLoading(false);
       console.error('[FyersPublisher] Error:', error);
+      // Refused before anything reached the broker (market closed, expired
+      // session, ...): not a sell-authorization problem and not a broker
+      // rejection. Say why and stop before the TPIN branch below.
+      if (error?.response?.status === 409 && !error?.response?.data?.recompute &&
+          (error?.response?.data?.dispatchState === 'NOT_SENT' ||
+           error?.response?.data?.notSent === true ||
+           error?.response?.data?.code === 'MARKET_CLOSED')) {
+        Alert.alert(
+          'Orders not placed',
+          error?.response?.data?.message || 'Nothing was sent to your broker. Please try again later.',
+        );
+        setOpenRebalanceModal(false);
+        return;
+      }
 
       let errorMessage;
       if (error?.code === 'ERR_NETWORK' || error?.code === 'ECONNABORTED') {
@@ -1966,6 +1982,20 @@ const RebalanceModal = ({
       })
       .catch(error => {
         setLoading(false);
+        // Refused before anything reached the broker (market closed, expired
+        // session, ...): not a sell-authorization problem and not a broker
+        // rejection. Say why and stop before the TPIN branch below.
+        if (error?.response?.status === 409 && !error?.response?.data?.recompute &&
+            (error?.response?.data?.dispatchState === 'NOT_SENT' ||
+             error?.response?.data?.notSent === true ||
+             error?.response?.data?.code === 'MARKET_CLOSED')) {
+          Alert.alert(
+            'Orders not placed',
+            error?.response?.data?.message || 'Nothing was sent to your broker. Please try again later.',
+          );
+          setOpenRebalanceModal(false);
+          return;
+        }
 
         // Determine a user-friendly error message
         let errorMessage;
@@ -2573,6 +2603,66 @@ const RebalanceModal = ({
                           style={{
                             color: '#fff',
                             fontFamily: 'Poppins-Medium',
+                            fontSize: 14,
+                          }}>
+                          Go Back
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : !isAlreadyAlignedCalculation ? (
+                    // "Already Aligned" is a claim about a zero-trade
+                    // calculation. With no such calculation the list is empty
+                    // for another reason, typically Repair rows clearing right
+                    // after placement while the broker confirms them (moneyman
+                    // Groww, 7 Oct 2026, showed "Already Aligned" with an
+                    // order still open).
+                    <>
+                      {matchingRepairTrade?.reconciliationPending === true ? (
+                        <ActivityIndicator
+                          size="large"
+                          color={designColor('2563eb')}
+                          style={{marginBottom: 20}}
+                        />
+                      ) : null}
+                      <Text
+                        testID="rebalance-empty-not-aligned"
+                        style={{
+                          fontFamily: designFont('Poppins-SemiBold'),
+                          color: designColor('1f2937'),
+                          fontSize: 18,
+                          textAlign: 'center',
+                          marginBottom: 12,
+                        }}>
+                        {matchingRepairTrade?.reconciliationPending === true
+                          ? 'Orders sent, checking with the broker'
+                          : 'Nothing to place right now'}
+                      </Text>
+                      <Text
+                        style={{
+                          fontFamily: designFont('Poppins-Regular'),
+                          color: 'rgba(0,0,0,0.6)',
+                          textAlign: 'center',
+                          marginBottom: 24,
+                          fontSize: 14,
+                          lineHeight: 22,
+                          paddingHorizontal: 10,
+                        }}>
+                        {matchingRepairTrade?.reconciliationPending === true
+                          ? `Your orders were sent to ${broker || 'your broker'}. We are confirming them now. Anything that does not go through will appear under Repair Portfolio.`
+                          : 'Go back and open the portfolio again to see its latest orders.'}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={handleClose}
+                        style={{
+                          backgroundColor: designColor('000'),
+                          paddingHorizontal: 24,
+                          paddingVertical: 12,
+                          borderRadius: 8,
+                        }}>
+                        <Text
+                          style={{
+                            color: designColor('fff'),
+                            fontFamily: designFont('Poppins-Medium'),
                             fontSize: 14,
                           }}>
                           Go Back

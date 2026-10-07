@@ -43,6 +43,7 @@ import { computeTradeVariant } from '../../utils/tradeVariant';
 import useSdkClient from '../../sdk/useSdkClient';
 import portfolioEvents, { PORTFOLIO_EVENTS } from '../../utils/portfolioEvents';
 import { isZerodhaSellAuthorized } from '../../utils/zerodhaDdpiGate';
+import {throwIfSdkNotSent} from '../../utils/sdkNotSent';
 
 const isSdkExecuteAdviceEnabled = () => {
   const v = String(Config?.REACT_APP_USE_SDK_EXECUTE_ADVICE || '').trim().toLowerCase();
@@ -445,6 +446,7 @@ const MPReviewTradeModal = ({
             uniqueId: calculatedPortfolioData?.uniqueId,
             trades: payload.trades,
           });
+          throwIfSdkNotSent(sdkResult);
           const mappedRows = (sdkResult?.rows || []).map(row => ({
             ...row,
             orderStatus: row.status,
@@ -666,6 +668,20 @@ const MPReviewTradeModal = ({
     } catch (error) {
       console.log('[OrderPlacement] Error:', error?.response?.data || error.message);
       setLoading(false);
+      // Refused before anything reached the broker (market closed, expired
+      // session, ...): not a sell-authorization problem and not a broker
+      // rejection. Say why and stop before the TPIN branch below.
+      if (error?.response?.status === 409 && !error?.response?.data?.recompute &&
+          (error?.response?.data?.dispatchState === 'NOT_SENT' ||
+           error?.response?.data?.notSent === true ||
+           error?.response?.data?.code === 'MARKET_CLOSED')) {
+        Alert.alert(
+          'Orders not placed',
+          error?.response?.data?.message || 'Nothing was sent to your broker. Please try again later.',
+        );
+        onCloseReviewTrade();
+        return;
+      }
 
       const responseData = error?.response?.data;
       const orderErrors = responseData?.orderErrors || [];
@@ -1467,6 +1483,7 @@ const MPReviewTradeModal = ({
             uniqueId: calculatedPortfolioData?.uniqueId,
             trades: fyersTrades,
           });
+          throwIfSdkNotSent(sdkResult);
           const mappedRows = (sdkResult?.rows || []).map(row => ({
             ...row,
             orderStatus: row.status,

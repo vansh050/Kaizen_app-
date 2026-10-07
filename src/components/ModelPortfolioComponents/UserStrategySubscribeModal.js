@@ -52,6 +52,7 @@ import { validateBrokerSession } from '../../utils/brokerSessionUtils';
 import { isZerodhaSellAuthorized } from '../../utils/zerodhaDdpiGate';
 import useModalStore from '../../GlobalUIModals/modalStore';
 import useSdkClient from '../../sdk/useSdkClient';
+import {throwIfSdkNotSent} from '../../utils/sdkNotSent';
 
 const isSdkExecuteAdviceEnabled = () => {
   const v = String(Config?.REACT_APP_USE_SDK_EXECUTE_ADVICE || '').trim().toLowerCase();
@@ -550,6 +551,7 @@ const UserStrategySubscribeModal = ({
             trades: payload.trades,
             subscriptionId: latestRebalance?._id || '',
           });
+          throwIfSdkNotSent(sdkResult);
           const mappedRows = (sdkResult?.rows || []).map(row => ({
             ...row,
             orderStatus: row.status,
@@ -827,6 +829,7 @@ const UserStrategySubscribeModal = ({
           trades: payload.trades,
           subscriptionId: latestRebalance?._id || '',
         });
+        throwIfSdkNotSent(sdkResult);
         const mappedRows = (sdkResult?.rows || []).map(row => ({
           ...row,
           orderStatus: row.status,
@@ -1233,6 +1236,7 @@ const UserStrategySubscribeModal = ({
               trades: zerodhaStockDetails,
               subscriptionId: latestRebalance?._id || '',
             });
+            throwIfSdkNotSent(sdkResult);
             const mappedRows = (sdkResult?.rows || []).map(row => ({
               ...row,
               orderStatus: row.status,
