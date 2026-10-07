@@ -2069,7 +2069,7 @@ const RebalanceModal = ({
       getLTPForSymbol,
       // Repair-mode props — see § 6g
       isRepairMode,
-      promptMarkAsManuallyPlaced,
+      recordManualPlacement,
       manualPlacementInFlight,
       manuallyPlacedSymbols,
     }) => {
@@ -2100,6 +2100,47 @@ const RebalanceModal = ({
       const showChip = isCautionary || isLowFunds || isPartialFill;
       const isThisRowSubmitting = manualPlacementInFlight === item.symbol;
       const isAlreadyMarked = !!manuallyPlacedSymbols?.[item.symbol];
+
+      // Only a cautionary listing offers "Mark as placed": the broker API will
+      // never accept it, so the customer has to place it in the broker app.
+      // Funds / partial / funding-pending / T1 rows are re-placed by Repair
+      // itself; recording them by hand as well would book a fill Repair then
+      // buys again (same rule as RecommendationSuccessModal, 2026-09-23).
+      const canMarkAsPlaced = isCautionary && !isAlreadyMarked;
+      const [placementEditorOpen, setPlacementEditorOpen] =
+        React.useState(false);
+      const [placedQty, setPlacedQty] = React.useState('');
+      const [placedPrice, setPlacedPrice] = React.useState('');
+      const [placementError, setPlacementError] = React.useState('');
+      const maxPlacedQty = Number(item.qty) || 0;
+
+      const openPlacementEditor = () => {
+        const ltp = Number(getLTPForSymbol(item.symbol));
+        setPlacedQty(maxPlacedQty > 0 ? String(maxPlacedQty) : '');
+        // LTP is only a starting point; the customer confirms the price the
+        // broker actually filled at, because it becomes the cost basis.
+        setPlacedPrice(Number.isFinite(ltp) && ltp > 0 ? ltp.toFixed(2) : '');
+        setPlacementError('');
+        setPlacementEditorOpen(true);
+      };
+
+      const confirmPlacement = async () => {
+        const qty = Number(placedQty);
+        const price = Number(placedPrice);
+        if (!Number.isInteger(qty) || qty < 1 || qty > maxPlacedQty) {
+          setPlacementError(
+            `Enter the shares you actually ${item.orderType === 'SELL' ? 'sold' : 'bought'} (1 to ${maxPlacedQty}).`,
+          );
+          return;
+        }
+        if (!Number.isFinite(price) || price <= 0) {
+          setPlacementError('Enter the average price shown in your broker app.');
+          return;
+        }
+        setPlacementError('');
+        const saved = await recordManualPlacement(item, {qty, price});
+        if (saved) setPlacementEditorOpen(false);
+      };
 
       const chipLabel = isAlreadyMarked
         ? 'Marked as placed ✓'
@@ -2135,12 +2176,12 @@ const RebalanceModal = ({
             {showChip && (
               <TouchableOpacity
                 onPress={
-                  isAlreadyMarked || isThisRowSubmitting
-                    ? undefined
-                    : () => promptMarkAsManuallyPlaced(item)
+                  canMarkAsPlaced && !isThisRowSubmitting
+                    ? openPlacementEditor
+                    : undefined
                 }
-                disabled={isAlreadyMarked || isThisRowSubmitting}
-                activeOpacity={isAlreadyMarked ? 1 : 0.6}
+                disabled={!canMarkAsPlaced || isThisRowSubmitting}
+                activeOpacity={canMarkAsPlaced ? 0.6 : 1}
                 style={[styles.chipBase, chipStyle]}>
                 {isThisRowSubmitting ? (
                   <ActivityIndicator size="small" color="#9A3412" />
@@ -2153,10 +2194,78 @@ const RebalanceModal = ({
                         isAlreadyMarked && styles.chipTextDone,
                       ]}>
                       {chipLabel}
+                      {canMarkAsPlaced && !placementEditorOpen
+                        ? ' · Mark as placed'
+                        : ''}
                     </Text>
                   </>
                 )}
               </TouchableOpacity>
+            )}
+            {canMarkAsPlaced && placementEditorOpen && (
+              <View style={styles.placementEditor}>
+                <Text style={styles.placementEditorHint}>
+                  Only after the {item.orderType} order shows as executed in
+                  your broker app. Enter what you actually{' '}
+                  {item.orderType === 'SELL' ? 'sold' : 'bought'}.
+                </Text>
+                <View style={styles.placementEditorRow}>
+                  <View style={{flex: 1}}>
+                    <Text style={styles.placementEditorLabel}>
+                      Shares (max {maxPlacedQty})
+                    </Text>
+                    <TextInput
+                      style={styles.placementEditorInput}
+                      value={placedQty}
+                      onChangeText={text =>
+                        setPlacedQty(text.replace(/[^0-9]/g, ''))
+                      }
+                      keyboardType="number-pad"
+                      editable={!isThisRowSubmitting}
+                    />
+                  </View>
+                  <View style={{flex: 1}}>
+                    <Text style={styles.placementEditorLabel}>
+                      Avg price (₹)
+                    </Text>
+                    <TextInput
+                      style={styles.placementEditorInput}
+                      value={placedPrice}
+                      onChangeText={text =>
+                        setPlacedPrice(text.replace(/[^0-9.]/g, ''))
+                      }
+                      keyboardType="decimal-pad"
+                      placeholder="e.g. 51.20"
+                      editable={!isThisRowSubmitting}
+                    />
+                  </View>
+                </View>
+                {!!placementError && (
+                  <Text style={styles.placementEditorError}>
+                    {placementError}
+                  </Text>
+                )}
+                <View style={styles.placementEditorRow}>
+                  <TouchableOpacity
+                    onPress={() => setPlacementEditorOpen(false)}
+                    disabled={isThisRowSubmitting}
+                    style={styles.placementCancelButton}>
+                    <Text style={styles.placementCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={confirmPlacement}
+                    disabled={isThisRowSubmitting}
+                    style={styles.placementConfirmButton}>
+                    {isThisRowSubmitting ? (
+                      <ActivityIndicator size="small" color={'#FFFFFF'} />
+                    ) : (
+                      <Text style={styles.placementConfirmText}>
+                        Confirm placed
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
             )}
           </View>
 
@@ -2208,7 +2317,7 @@ const RebalanceModal = ({
         handleQtySave={handleQtySave}
         getLTPForSymbol={getLTPForSymbol}
         isRepairMode={isRepairMode}
-        promptMarkAsManuallyPlaced={promptMarkAsManuallyPlaced}
+        recordManualPlacement={markRowAsManuallyPlaced}
         manualPlacementInFlight={manualPlacementInFlight}
         manuallyPlacedSymbols={manuallyPlacedSymbols}
       />
@@ -2219,7 +2328,7 @@ const RebalanceModal = ({
       handleQtySave,
       getLTPForSymbol,
       isRepairMode,
-      promptMarkAsManuallyPlaced,
+      markRowAsManuallyPlaced,
       manualPlacementInFlight,
       manuallyPlacedSymbols,
     ],
@@ -2260,15 +2369,16 @@ const RebalanceModal = ({
   // model_portfolio.rebalanceHistory[].adviceEntries[].status flips to
   // "executed" + manually_placed_at is stamped, then mutates the local
   // dataArray to remove the row visually. Mirrors mobile MP success
-  // modal's per-row editor (RecommendationSuccessModal.js:290) but
-  // skips the qty/price input — we use the failed-trade's reported
-  // quantity and the current LTP since the user has presumably placed
-  // the same order via their broker app.
+  // modal's per-row editor (RecommendationSuccessModal.js:290): the row's
+  // inline editor collects the shares and average price the broker actually
+  // filled. Both are required — the server books them as the holding's cost
+  // basis and rejects a missing/zero price. (Until 2026-10-07 this sent the
+  // live LTP, or null when no LTP had arrived, which 400'd.)
   // See docs/MODEL_PORTFOLIO_ARCHITECTURE.md § 6g.
   const [manuallyPlacedSymbols, setManuallyPlacedSymbols] = useState({});
   const [manualPlacementInFlight, setManualPlacementInFlight] = useState(null);
   const markRowAsManuallyPlaced = useCallback(
-    async item => {
+    async (item, actual) => {
       if (!modelPortfolioModelId || !item?.symbol) {
         Toast.show({
           type: 'error',
@@ -2276,11 +2386,20 @@ const RebalanceModal = ({
           text2: 'Missing rebalance reference. Please retry from the portfolio.',
           visibilityTime: 4000,
         });
-        return;
+        return false;
+      }
+      const actualQty = Number(actual?.qty);
+      const actualPrice = Number(actual?.price);
+      if (
+        !Number.isInteger(actualQty) ||
+        actualQty < 1 ||
+        !Number.isFinite(actualPrice) ||
+        actualPrice <= 0
+      ) {
+        return false;
       }
       try {
         setManualPlacementInFlight(item.symbol);
-        const ltp = getLTPForSymbol(item.symbol);
         await axios.put(
           `${server.server.baseUrl}api/model-portfolio-db-update/manual-placement`,
           {
@@ -2291,8 +2410,8 @@ const RebalanceModal = ({
             symbol: item.symbol,
             exchange: item.exchange,
             transactionType: item.orderType,
-            actualQty: Number(item.qty),
-            actualPrice: Number.isFinite(ltp) && ltp > 0 ? Number(ltp) : null,
+            actualQty,
+            actualPrice,
           },
           {
             headers: {
@@ -2324,6 +2443,7 @@ const RebalanceModal = ({
           text2: `${item.symbol} recorded as manually placed.`,
           visibilityTime: 3000,
         });
+        return true;
       } catch (e) {
         console.error(
           '[RebalanceModal manual-placement] error:',
@@ -2338,6 +2458,7 @@ const RebalanceModal = ({
             'Try again in a moment.',
           visibilityTime: 4000,
         });
+        return false;
       } finally {
         setManualPlacementInFlight(null);
       }
@@ -2348,35 +2469,8 @@ const RebalanceModal = ({
       storeModalName,
       broker,
       configData,
-      getLTPForSymbol,
       getRebalanceRepair,
     ],
-  );
-
-  // Tap handler for the cautionary / insufficient-funds chip. Two-step
-  // confirm so a fat-finger tap doesn't silently flip the row.
-  const promptMarkAsManuallyPlaced = useCallback(
-    item => {
-      const isCautionary = isCautionaryListingMessage(item);
-      const reason = isCautionary
-        ? 'Cautionary listing — this stock cannot be auto-placed.'
-        : isInsufficientFundsMessage(item)
-        ? 'Insufficient funds when last attempted.'
-        : 'Order was rejected on the last attempt.';
-      Alert.alert(
-        `${item.symbol} · ${item.orderType}`,
-        `${reason}\n\nPlace this order via your broker app first, then tap "Mark as Placed" to record it. Quantity ${item.qty} @ current LTP will be saved.`,
-        [
-          {text: 'Cancel', style: 'cancel'},
-          {
-            text: 'Mark as Placed',
-            style: 'default',
-            onPress: () => markRowAsManuallyPlaced(item),
-          },
-        ],
-      );
-    },
-    [markRowAsManuallyPlaced],
   );
 
   return (
@@ -2917,6 +3011,71 @@ const styles = StyleSheet.create({
   },
   chipTextDone: {
     color: '#166534',
+  },
+  // Inline "Mark as placed" editor on a cautionary Repair row.
+  placementEditor: {
+    marginTop: 6,
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    backgroundColor: '#FFFBEB',
+    gap: 6,
+  },
+  placementEditorHint: {
+    fontSize: 11,
+    fontFamily: 'Poppins-Regular',
+    color: '#92400E',
+  },
+  placementEditorRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  placementEditorLabel: {
+    fontSize: 10,
+    fontFamily: 'Poppins-Medium',
+    color: '#4B5563',
+    marginBottom: 2,
+  },
+  placementEditorInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 13,
+    color: '#111827',
+    backgroundColor: '#FFFFFF',
+  },
+  placementEditorError: {
+    fontSize: 11,
+    fontFamily: 'Poppins-Medium',
+    color: '#B91C1C',
+  },
+  placementCancelButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  placementCancelText: {
+    fontSize: 12,
+    fontFamily: 'Poppins-Medium',
+    color: '#374151',
+  },
+  placementConfirmButton: {
+    flex: 2,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 6,
+    backgroundColor: '#15803D',
+  },
+  placementConfirmText: {
+    fontSize: 12,
+    fontFamily: 'Poppins-SemiBold',
+    color: '#FFFFFF',
   },
   // Cautionary listing — yellow/amber to match RecommendationSuccessModal.
   chipCautionary: {
