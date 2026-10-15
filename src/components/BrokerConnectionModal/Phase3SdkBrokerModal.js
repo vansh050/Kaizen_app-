@@ -442,7 +442,17 @@ const buildSchemaOverride = (brokerName, userDetails) => {
   if (brokerName === 'Angel One') {
     return {
       fields: [
-        {name: 'apiKey', initialValue: stored?.apiKey || ''},
+        {
+          name: 'apiKey',
+          initialValue: stored?.apiKey || '',
+          // SmartAPI API keys are exactly 8 letters/digits; a 9-character typo
+          // still got a session Angel One then refused (AG8004), looping
+          // "connected" -> "session expired" (2026-10-15). The server enforces
+          // the same rule.
+          pattern: /^[A-Za-z0-9]{8}$/,
+          patternError:
+            'The API Key is 8 letters or digits (not your TOTP key or a longer secret). Copy it from your app at smartapi.angelone.in → My Apps.',
+        },
         {name: 'secretKey', initialValue: stored?.secretKey || ''},
         {name: 'clientCode', initialValue: stored?.clientCode || ''},
       ],
