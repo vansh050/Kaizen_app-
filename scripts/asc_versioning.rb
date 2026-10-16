@@ -88,13 +88,21 @@ build_versions = (builds['data'] || []).map { |b| b.dig('attributes', 'version')
 next_build = (build_versions.max || 0) + 1
 
 # --- marketing version floor: highest released App Store version -------------
+# Apple reports these in two fields: the legacy appStoreState and the newer
+# appVersionState (READY_FOR_DISTRIBUTION, ACCEPTED, ...). Missing the newer
+# names reused an approved version — ARFS 11.2.23, run 38881599390 (409
+# "train version is closed"). Check both fields.
 CLOSING_STATES = %w[
   READY_FOR_SALE APPROVED PENDING_APPLE_RELEASE PENDING_DEVELOPER_RELEASE
   REPLACED_WITH_NEW_VERSION PENDING_CONTRACT REMOVED_FROM_SALE
+  READY_FOR_DISTRIBUTION ACCEPTED PENDING_RELEASE PROCESSING_FOR_DISTRIBUTION
 ].freeze
 
 asv = asc_get("/v1/apps/#{app_id}/appStoreVersions?limit=200", token)
-released = (asv['data'] || []).select { |v| CLOSING_STATES.include?(v.dig('attributes', 'appStoreState')) }
+released = (asv['data'] || []).select { |v|
+             attrs = v['attributes'] || {}
+             CLOSING_STATES.include?(attrs['appStoreState']) || CLOSING_STATES.include?(attrs['appVersionState'])
+           }
                               .map { |v| v.dig('attributes', 'versionString') }
                               .compact
 floor = released.max_by { |v| v.split('.').map(&:to_i) }
