@@ -18,6 +18,12 @@ target 'AlphaQuark' do
   config = use_native_modules!
   pod 'Firebase', :modular_headers => true
   pod 'FirebaseCoreInternal', :modular_headers => true
+  # Crashlytics/Sessions (Swift) import these; without module maps a clean
+  # `pod install` fails ("cannot yet be integrated as static libraries").
+  pod 'FirebaseCoreExtension', :modular_headers => true
+  pod 'FirebaseInstallations', :modular_headers => true
+  pod 'GoogleDataTransport', :modular_headers => true
+  pod 'nanopb', :modular_headers => true
   pod 'GoogleUtilities', :modular_headers => true
   pod 'FirebaseCore', :modular_headers => true
   pod 'GoogleSignIn', :modular_headers => true

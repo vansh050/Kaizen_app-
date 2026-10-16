@@ -7,7 +7,7 @@
  *   brokerConfig: BrokerConfig from brokerRegistry
  *   onSuccess: () => void (callback after connection)
  */
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -21,22 +21,27 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { WebView } from 'react-native-webview';
+import { getAuth } from '@react-native-firebase/auth';
 import axios from 'axios';
 import Config from 'react-native-config';
 import CryptoJS from 'react-native-crypto-js';
 
 import server from '../../utils/serverConfig';
 import { generateToken } from '../../utils/SecurityTokenManager';
-import { getAdvisorSubdomain } from '../../utils/variantHelper';
+import {getTenantSubdomain} from '../../utils/variantHelper';
 import { getApiBrokerName, BROKER_AUTH_TYPE } from '../../config/brokerRegistry';
 import { getBrokerCallbackUrl } from '../../utils/brokerAuth';
 import useModalStore from '../../GlobalUIModals/modalStore';
 import BrokerWalkthroughPlayer from '../../components/BrokerConnectionModal/BrokerWalkthroughPlayer';
 import {getAccountEmail} from '../../utils/accountEmail';
+import {useConfig} from '../../context/ConfigContext';
+import {generateDeviceTotp, hasDeviceTotp, removeDeviceTotp, saveDeviceTotpSeed, unlockDeviceTotpRecord, unlockDeviceTotpSeed} from '../../services/DeviceTotpVault';
+
+import { designColor } from '../../design/literalTokens';
 
 const getHeaders = () => ({
   'Content-Type': 'application/json',
-  'X-Advisor-Subdomain': getAdvisorSubdomain(),
+  'X-Advisor-Subdomain': getTenantSubdomain(),
   'aq-encrypted-key': generateToken(Config.REACT_APP_AQ_KEYS, Config.REACT_APP_AQ_SECRET),
 });
 
@@ -47,8 +52,10 @@ const BrokerCredentialScreen = () => {
   const route = useRoute();
   const { brokerConfig, onSuccess } = route.params || {};
 
+  const auth = getAuth();
   const userEmail = getAccountEmail();
   const showAlert = useModalStore((state) => state.showAlert);
+  const configData = useConfig();
 
   const [formValues, setFormValues] = useState({});
   const [errors, setErrors] = useState({});
@@ -56,6 +63,9 @@ const BrokerCredentialScreen = () => {
   const [webviewUrl, setWebviewUrl] = useState(null);
   const [walkthroughVideoId, setWalkthroughVideoId] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [deviceTotpSeed, setDeviceTotpSeed] = useState('');
+  const [saveTotpOnDevice, setSaveTotpOnDevice] = useState(false);
+  const [hasSavedTotp, setHasSavedTotp] = useState(false);
   const hasConnected = useRef(false);
 
   const brokerName = brokerConfig?.name;
@@ -63,6 +73,13 @@ const BrokerCredentialScreen = () => {
   const apiBrokerName = getApiBrokerName(brokerConfig);
   const fields = brokerConfig?.fields || [];
   const isHybrid = brokerConfig?.authType === BROKER_AUTH_TYPE.HYBRID;
+  const totpIdentity = {advisor: getTenantSubdomain(), broker: brokerName, userEmail};
+
+  useEffect(() => {
+    if (!configData?.deviceTotpEnabled || !userEmail || !brokerName) return;
+    if (brokerKey !== 'kotak' && brokerKey !== 'groww') return;
+    hasDeviceTotp(totpIdentity).then(setHasSavedTotp).catch(() => setHasSavedTotp(false));
+  }, [configData?.deviceTotpEnabled, brokerKey, brokerName, userEmail]);
 
   // ---------------------------------------------------------------------------
   // Get user ID
@@ -81,10 +98,10 @@ const BrokerCredentialScreen = () => {
   // ---------------------------------------------------------------------------
   // Validate form
   // ---------------------------------------------------------------------------
-  const validate = () => {
+  const validate = (values = formValues) => {
     const newErrors = {};
     for (const field of fields) {
-      const val = (formValues[field.key] || '').trim();
+      const val = (values[field.key] || '').trim();
       if (!val) {
         newErrors[field.key] = `${field.label} is required`;
       } else if (field.validation && !new RegExp(field.validation).test(val)) {
@@ -115,11 +132,22 @@ const BrokerCredentialScreen = () => {
   // Submit credentials per broker
   // ---------------------------------------------------------------------------
   const handleSubmit = async () => {
-    if (!validate()) return;
     setSubmitting(true);
     setErrorMsg(null);
 
     try {
+      const submissionValues = {...formValues};
+      if (brokerKey === 'kotak' && configData?.deviceTotpEnabled === true && !submissionValues.totp) {
+        submissionValues.totp = await generateDeviceTotp(totpIdentity);
+      }
+      let growwRecordLacksToken = false;
+      if (brokerKey === 'groww' && configData?.deviceTotpEnabled === true && hasSavedTotp && (!submissionValues.totp_seed || !submissionValues.apiKey)) {
+        const record = await unlockDeviceTotpRecord(totpIdentity);
+        if (!submissionValues.totp_seed) submissionValues.totp_seed = record?.seed || '';
+        if (!submissionValues.apiKey) submissionValues.apiKey = record?.apiKey || '';
+        growwRecordLacksToken = Boolean(record?.seed) && !record?.apiKey;
+      }
+      if (!validate(submissionValues)) { setSubmitting(false); return; }
       const userId = await getUserId();
       if (!userId) throw new Error('User not found');
 
@@ -233,11 +261,20 @@ const BrokerCredentialScreen = () => {
               uid: userId,
               user_email: userEmail,
               user_broker: 'Groww',
-              apiKey: encrypt(formValues.apiKey),
-              totp_seed: encrypt(formValues.totp_seed),
+              apiKey: encrypt(submissionValues.apiKey),
+              totp_seed: encrypt(submissionValues.totp_seed),
             },
             { headers: getHeaders(), timeout: 20000 },
           );
+          if (configData?.deviceTotpEnabled === true && (saveTotpOnDevice || growwRecordLacksToken) && submissionValues.totp_seed) {
+            try {
+              await saveDeviceTotpSeed(totpIdentity, submissionValues.totp_seed, '', {apiKey: submissionValues.apiKey});
+              setHasSavedTotp(true);
+              setSaveTotpOnDevice(false);
+            } catch (saveErr) {
+              console.warn('[Groww] could not save login on this phone:', saveErr?.message);
+            }
+          }
           await onConnectionSuccess();
           setSubmitting(false);
           return;
@@ -254,10 +291,14 @@ const BrokerCredentialScreen = () => {
               mobileNumber: '+91' + formValues.mobileNumber,
               mpin: formValues.mpin,
               ucc: formValues.ucc,
-              totp: formValues.totp,
+              totp: submissionValues.totp,
             },
             { headers: getHeaders(), timeout: 20000 },
           );
+          if (configData?.deviceTotpEnabled === true && saveTotpOnDevice && deviceTotpSeed) {
+            await saveDeviceTotpSeed(totpIdentity, deviceTotpSeed, submissionValues.totp);
+            setDeviceTotpSeed('');
+          }
           await onConnectionSuccess();
           setSubmitting(false);
           return;
@@ -424,7 +465,7 @@ const BrokerCredentialScreen = () => {
           javaScriptEnabled
           domStorageEnabled
           startInLoadingState
-          renderLoading={() => <ActivityIndicator style={styles.webviewLoading} size="large" color="#1A237E" />}
+          renderLoading={() => <ActivityIndicator style={styles.webviewLoading} size="large" color={designColor('1a237e')} />}
           style={styles.webview}
         />
       </View>
@@ -443,7 +484,6 @@ const BrokerCredentialScreen = () => {
         <Text style={styles.headerTitle}>Connect {brokerName}</Text>
         <View style={{ width: 40 }} />
       </View>
-
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -473,7 +513,7 @@ const BrokerCredentialScreen = () => {
                   if (errors[field.key]) setErrors((prev) => ({ ...prev, [field.key]: null }));
                 }}
                 placeholder={field.placeholder}
-                placeholderTextColor="#999"
+                placeholderTextColor={designColor('999')}
                 secureTextEntry={field.isSecret}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -483,6 +523,35 @@ const BrokerCredentialScreen = () => {
               )}
             </View>
           ))}
+          {(brokerKey === 'kotak' || brokerKey === 'groww') && configData?.deviceTotpEnabled === true && (
+            <View style={styles.fieldContainer}>
+              <TouchableOpacity onPress={() => hasSavedTotp ? null : setSaveTotpOnDevice(value => !value)}>
+                <Text style={styles.fieldLabel}>{hasSavedTotp || saveTotpOnDevice ? '✓ ' : '○ '}Protect TOTP key on this phone</Text>
+              </TouchableOpacity>
+              {brokerKey === 'kotak' && saveTotpOnDevice && !hasSavedTotp && <TextInput style={styles.input} value={deviceTotpSeed} onChangeText={setDeviceTotpSeed} placeholder="Authenticator secret (Base32)" placeholderTextColor={designColor('999')} secureTextEntry autoCapitalize="none" autoCorrect={false} />}
+              {hasSavedTotp && <View>
+                <TouchableOpacity onPress={async () => {
+                  if (brokerKey === 'groww') {
+                    const record = await unlockDeviceTotpRecord(totpIdentity);
+                    setFormValues(previous => ({
+                      ...previous,
+                      totp_seed: record?.seed || '',
+                      ...(record?.apiKey ? {apiKey: record.apiKey} : {}),
+                    }));
+                    return;
+                  }
+                  const value = brokerKey === 'kotak' ? await generateDeviceTotp(totpIdentity) : await unlockDeviceTotpSeed(totpIdentity);
+                  setFormValues(previous => ({...previous, [brokerKey === 'kotak' ? 'totp' : 'totp_seed']: value || ''}));
+                }}><Text style={styles.fieldLabel}>Unlock saved key</Text></TouchableOpacity>
+                <TouchableOpacity onPress={async () => { await removeDeviceTotp(totpIdentity); setHasSavedTotp(false); }}>
+                  <Text style={styles.fieldError}>Forget key on this phone</Text>
+                </TouchableOpacity>
+              </View>}
+              <Text style={styles.fieldError}>{brokerKey === 'groww'
+                ? 'The phone copy is biometric-protected. Groww also keeps an encrypted backend copy for unattended daily refresh.'
+                : 'Protected by Face ID, fingerprint or device passcode. The key is never uploaded.'}</Text>
+            </View>
+          )}
 
           {errorMsg && (
             <View style={styles.errorBox}>
@@ -499,7 +568,7 @@ const BrokerCredentialScreen = () => {
             disabled={submitting}
           >
             {submitting ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={designColor('fff')} />
             ) : (
               <Text style={styles.submitBtnText}>
                 {isHybrid ? 'Connect & Authorize' : 'Connect'}
@@ -511,7 +580,7 @@ const BrokerCredentialScreen = () => {
       <BrokerWalkthroughPlayer
         videoId={walkthroughVideoId}
         title={`${brokerName} walkthrough`}
-        accent="#1A237E"
+        accent={designColor('1a237e')}
         onClose={() => setWalkthroughVideoId(null)}
       />
     </View>
@@ -519,49 +588,49 @@ const BrokerCredentialScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F9FC' },
+  container: { flex: 1, backgroundColor: designColor('f8f9fc') },
 
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingTop: 50, paddingBottom: 12,
-    backgroundColor: '#1A237E',
+    backgroundColor: designColor('1a237e'),
   },
   backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  backBtnText: { color: '#fff', fontSize: 22, fontWeight: '600' },
-  headerTitle: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  backBtnText: { color: designColor('fff'), fontSize: 22, fontWeight: '600' },
+  headerTitle: { color: designColor('fff'), fontSize: 17, fontWeight: '700' },
 
   formContainer: { padding: 20, paddingBottom: 100 },
   videoLink: {
-    padding: 12, backgroundColor: '#E3F2FD', borderRadius: 10, marginBottom: 20, alignItems: 'center',
+    padding: 12, backgroundColor: designColor('e3f2fd'), borderRadius: 10, marginBottom: 20, alignItems: 'center',
   },
-  videoLinkText: { color: '#1565C0', fontSize: 14, fontWeight: '600' },
+  videoLinkText: { color: designColor('1565c0'), fontSize: 14, fontWeight: '600' },
 
   fieldContainer: { marginBottom: 18 },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: '#333', marginBottom: 6 },
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: designColor('333'), marginBottom: 6 },
   input: {
-    backgroundColor: '#fff', borderWidth: 1, borderColor: '#E0E0E0',
+    backgroundColor: designColor('fff'), borderWidth: 1, borderColor: designColor('e0e0e0'),
     borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 15, color: '#333',
+    fontSize: 15, color: designColor('333'),
   },
-  inputError: { borderColor: '#EF5350' },
-  fieldError: { fontSize: 12, color: '#EF5350', marginTop: 4 },
+  inputError: { borderColor: designColor('ef5350') },
+  fieldError: { fontSize: 12, color: designColor('ef5350'), marginTop: 4 },
 
   errorBox: {
-    padding: 14, backgroundColor: '#FFEBEE', borderRadius: 10,
-    borderWidth: 1, borderColor: '#FFCDD2', marginTop: 8,
+    padding: 14, backgroundColor: designColor('ffebee'), borderRadius: 10,
+    borderWidth: 1, borderColor: designColor('ffcdd2'), marginTop: 8,
   },
-  errorBoxText: { fontSize: 13, color: '#C62828' },
+  errorBoxText: { fontSize: 13, color: designColor('c62828') },
 
   bottomSection: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    padding: 16, backgroundColor: '#F8F9FC',
-    borderTopWidth: 1, borderTopColor: '#E0E0E0',
+    padding: 16, backgroundColor: designColor('f8f9fc'),
+    borderTopWidth: 1, borderTopColor: designColor('e0e0e0'),
   },
   submitBtn: {
-    backgroundColor: '#1A237E', paddingVertical: 15, borderRadius: 14, alignItems: 'center',
+    backgroundColor: designColor('1a237e'), paddingVertical: 15, borderRadius: 14, alignItems: 'center',
   },
   submitBtnDisabled: { opacity: 0.6 },
-  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  submitBtnText: { color: designColor('fff'), fontSize: 16, fontWeight: '700' },
 
   webview: { flex: 1 },
   webviewLoading: { position: 'absolute', top: '50%', left: '50%', marginLeft: -20, marginTop: -20 },

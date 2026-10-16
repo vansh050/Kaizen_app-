@@ -8,11 +8,20 @@ import {
   FlatList,
   StyleSheet,
   Modal,
-  Alert,
   ActivityIndicator,
   SafeAreaView,
 } from "react-native";
 import { Check } from "lucide-react-native";
+import {useNavigation} from '@react-navigation/native';
+import { designToken } from '../../design/literalTokens';
+// Returns / weights arrive as raw floats (e.g. 2.1342819030680326); show two
+// decimals. Missing or non-numeric values keep the old "-" (0 stays "-" too,
+// as before).
+export const formatPercent = value => {
+  const n = Number(value);
+  return value && Number.isFinite(n) ? `${n.toFixed(2)}%` : '-';
+};
+
 const TerminateStrategyModal = ({
   terminateModal,
   setTerminateModal,
@@ -22,6 +31,7 @@ const TerminateStrategyModal = ({
   userDetails,
   tableData,
 }) => {
+  const navigation = useNavigation();
   const [ignoreText, setIgnoreText] = useState("");
   const [ignoreLoading, setIgnoreLoading] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
@@ -30,15 +40,24 @@ const TerminateStrategyModal = ({
     if (!isConfirmed) return;
     setIgnoreLoading(true);
 
-    // Simulate API call
-    setTimeout(() => {
-      setIgnoreLoading(false);
-      setTerminateModal(false);
-      Alert.alert(
-        "Success",
-        "You have successfully terminated the Model Portfolio."
-      );
-    }, 2000);
+    const history = strategyDetails?.model?.rebalanceHistory || [];
+    const latest = [...history].sort(
+      (a, b) => new Date(b?.rebalanceDate || 0) - new Date(a?.rebalanceDate || 0),
+    )[0];
+    setTerminateModal(false);
+    setIgnoreLoading(false);
+    navigation.navigate('RebalanceReview', {
+      portfolio: {
+        ...strategyDetails,
+        modelName: strategyDetails?.model_name,
+        model_id: latest?.model_Id,
+      },
+      userEmail,
+      broker: userDetails?.user_broker,
+      brokerCredentials: userDetails,
+      exitPortfolio: true,
+      exitReason: ignoreText.trim(),
+    });
   };
 
 
@@ -51,7 +70,7 @@ const TerminateStrategyModal = ({
     <FlatList
       data={tableData || [{}]}
       keyExtractor={(item, index) => index.toString()}
-      contentContainerStyle={{ borderWidth: 1, borderColor: "#ccc" }}
+      contentContainerStyle={{ borderWidth: 1, borderColor: designToken('terminateModal.table.borderColor') }}
       ListHeaderComponent={() => (
         <View style={[styles.row, styles.headerRow]}>
           {["Stock", "Current Price(₹)", "Avg. Buy Price(₹)", "Returns(%)", "Weights(%)", "Shares"].map(
@@ -68,8 +87,8 @@ const TerminateStrategyModal = ({
           <Text style={styles.cell}>{item.symbol || "-"}</Text>
           <Text style={styles.cell}>{item.currentPrice || "-"}</Text>
           <Text style={styles.cell}>{item.avgBuyPrice || "-"}</Text>
-          <Text style={styles.cell}>{item.returns ? `${item.returns}%` : "-"}</Text>
-          <Text style={styles.cell}>{item.weights ? `${item.weights}%` : "-"}</Text>
+          <Text style={styles.cell}>{formatPercent(item.returns)}</Text>
+          <Text style={styles.cell}>{formatPercent(item.weights)}</Text>
           <Text style={styles.cell}>{item.shares || "-"}</Text>
         </View>
       )}
@@ -86,14 +105,14 @@ const TerminateStrategyModal = ({
       <SafeAreaView style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>
-            Are you sure you want to terminate this Model Portfolio?
+            Exit holdings and close this Model Portfolio?
           </Text>
           <ScrollView style={styles.tableContainer}>{renderTable()}</ScrollView>
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
               placeholder="Reason for Terminate (Optional)"
-              placeholderTextColor="#aaa"
+              placeholderTextColor={designToken('terminateModal.input.placeholderColor')}
               value={ignoreText}
               onChangeText={setIgnoreText}
             />
@@ -106,11 +125,12 @@ const TerminateStrategyModal = ({
           isConfirmed ? styles.checked : styles.unchecked,
         ]}
       >
-    {isConfirmed && <Check size={20} color={'#fff'} />}
+    {isConfirmed && <Check size={20} color={designToken('terminateModal.checked.iconColor')} />}
       </TouchableOpacity>
             <Text style={styles.checkboxText}>
-              I understand that this action cannot be undone and I want to
-              terminate this Model Portfolio.
+              Prepare SELL orders only for this model's attributed holdings.
+              Closure happens after broker-confirmed fills. Subscription and
+              payment-mandate cancellation remain separate.
             </Text>
           </View>
           <View style={styles.footer}>
@@ -129,9 +149,9 @@ const TerminateStrategyModal = ({
               disabled={!isConfirmed}
             >
               {ignoreLoading ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={designToken('terminateModal.terminateText.spinnerColor')} />
               ) : (
-                <Text style={styles.terminateText}>Terminate</Text>
+                <Text style={styles.terminateText}>Review SELL Orders</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -144,11 +164,11 @@ const TerminateStrategyModal = ({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: designToken('terminateModal.modalOverlay.backgroundColor'),
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: designToken('terminateModal.modalContent.backgroundColor'),
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   
@@ -164,18 +184,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   checked: {
-    backgroundColor: '#10B981', // Tailwind color for success
-    borderColor: '#10B981', // Green border when checked
+    backgroundColor: designToken('terminateModal.checked.backgroundColor'), // Tailwind color for success
+    borderColor: designToken('terminateModal.checked.borderColor'), // Green border when checked
   },
   unchecked: {
-    backgroundColor: '#fff',
-    borderColor: '#D1D5DB', // Light gray border when unchecked
+    backgroundColor: designToken('terminateModal.unchecked.backgroundColor'),
+    borderColor: designToken('terminateModal.unchecked.borderColor'), // Light gray border when unchecked
   },
   modalTitle: {
     fontSize: 18,
     textAlign: "center",
-    color:'grey',
-    fontFamily:'Satoshi-Bold',
+    color:designToken('terminateModal.modalTitle.color'),
+    fontFamily:designToken('terminateModal.modalTitle.fontFamily'),
     marginBottom: 10,
   },
   tableContainer: {
@@ -185,38 +205,38 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     borderBottomWidth: 1,
-    borderColor: "#ccc",
+    borderColor: designToken('terminateModal.row.borderColor'),
   },
   headerRow: {
-    backgroundColor: "#f5f5f5",
+    backgroundColor: designToken('terminateModal.headerRow.backgroundColor'),
   },
   headerText: {
     flex: 1,
     textAlign: "center",
     padding: 5,
-    color:'grey',
-    fontFamily:'Satoshi-Bold',
+    color:designToken('terminateModal.headerText.color'),
+    fontFamily:designToken('terminateModal.headerText.fontFamily'),
     fontSize: 12,
   },
   cell: {
     flex: 1,
     textAlign: "center",
     padding: 5,
-    color:'black',
-    fontFamily:'Satoshi-Medium',
+    color:designToken('terminateModal.cell.color'),
+    fontFamily:designToken('terminateModal.cell.fontFamily'),
     fontSize: 10,
   },
   altRow: {
-    backgroundColor: "#f9f9f9",
+    backgroundColor: designToken('terminateModal.altRow.backgroundColor'),
   },
   inputContainer: {
     marginVertical: 10,
   },
   input: {
     borderWidth: 1,
-    borderColor: "#ccc",
+    borderColor: designToken('terminateModal.input.borderColor'),
     borderRadius: 5,
-    color:'#000',
+    color:designToken('terminateModal.input.color'),
     padding: 10,
     fontSize: 14,
   },
@@ -228,7 +248,7 @@ const styles = StyleSheet.create({
   checkboxText: {
     fontSize: 12,
     marginLeft: 10,
-    color:'grey'
+    color:designToken('terminateModal.checkboxText.color')
   },
   footer: {
     flexDirection: "row",
@@ -237,34 +257,34 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: designToken('terminateModal.cancelButton.backgroundColor'),
     borderWidth: 1,
-    borderColor: "#ccc",
+    borderColor: designToken('terminateModal.cancelButton.borderColor'),
     padding: 10,
     alignItems: "center",
     borderRadius: 5,
     marginRight: 5,
   },
   cancelText: {
-    color: "#000",
-    fontFamily:'Satoshi-Medium',
+    color: designToken('terminateModal.cancelText.color'),
+    fontFamily:designToken('terminateModal.cancelText.fontFamily'),
     fontSize: 14,
   },
   terminateButton: {
     flex: 1,
-    backgroundColor: "#e43d3d",
+    backgroundColor: designToken('terminateModal.terminateButton.backgroundColor'),
     padding: 10,
     alignItems: "center",
     borderRadius: 5,
     marginLeft: 5,
   },
   terminateText: {
-    color: "white",
+    color: designToken('terminateModal.terminateText.color'),
     fontSize: 14,
-    fontFamily:'Satoshi-Medium',
+    fontFamily:designToken('terminateModal.terminateText.fontFamily'),
   },
   disabledButton: {
-    backgroundColor: "#e0e0e0",
+    backgroundColor: designToken('terminateModal.disabledButton.backgroundColor'),
   },
 });
 

@@ -1,5 +1,6 @@
 import React, {useRef, useState, useEffect} from 'react';
 import {View, StyleSheet, Dimensions} from 'react-native';
+import {getAuth} from '@react-native-firebase/auth';
 import server from '../../utils/serverConfig';
 import axios from 'axios';
 import CryptoJS from 'react-native-crypto-js';
@@ -8,8 +9,9 @@ import Toast from 'react-native-toast-message';
 import {generateToken} from '../../utils/SecurityTokenManager';
 import ZerodhaConnectUI from '../../UIComponents/BrokerConnectionUI/ZerodhaConnectUI';
 import {useTrade} from '../../../screens/TradeContext';
-import {getAdvisorSubdomain} from '../../utils/variantHelper';
+import {getAdvisorSubdomain, getTenantSubdomain} from '../../utils/variantHelper';
 import {getAccountEmail} from '../../../utils/accountEmail';
+import { designFont } from '../../../design/literalTokens';
 const {width: screenWidth, height: screenHeight} = Dimensions.get('window');
 const commonHeight = screenHeight * 0.06;
 
@@ -37,6 +39,8 @@ const ZerodhaConnectModal = ({
   const [ispasswordVisibleup, setIsPasswordVisibleup] = useState(false);
   const [showWebView, setShowWebView] = useState(false); // Flag to toggle WebView display
   const [authUrl, setAuthUrl] = useState('');
+  const auth = getAuth();
+  const user = auth.currentUser;
   const userEmail = getAccountEmail();
   const sheet = useRef(null);
   const scrollViewRef = useRef(null);
@@ -55,12 +59,12 @@ const ZerodhaConnectModal = ({
         color: 'black',
         fontSize: 12,
         fontWeight: 0,
-        fontFamily: 'Poppins-Medium', // Customize your font
+        fontFamily: designFont('Poppins-Medium'), // Customize your font
       },
       text2Style: {
         color: 'black',
         fontSize: 13,
-        fontFamily: 'Poppins-Regular', // Customize your font
+        fontFamily: designFont('Poppins-Regular'), // Customize your font
       },
     });
   };
@@ -79,7 +83,7 @@ const ZerodhaConnectModal = ({
       .get(`${server.server.baseUrl}api/user/getUser/${userEmail}`, {
         headers: {
           'Content-Type': 'application/json',
-          'X-Advisor-Subdomain': getAdvisorSubdomain(),
+          'X-Advisor-Subdomain': getTenantSubdomain(),
           'aq-encrypted-key': generateToken(
             Config.REACT_APP_AQ_KEYS,
             Config.REACT_APP_AQ_SECRET,

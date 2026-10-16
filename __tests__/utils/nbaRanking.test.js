@@ -52,6 +52,21 @@ describe("individual blockers fire", () => {
     expect(focalAction({ repairTradesCount: 2 }).kind).toBe(NBA_KIND.REVIEW_REPAIR_TRADES);
   });
 
+  it("names an account blocker ahead of unusable Repair trades", () => {
+    const action = focalAction({
+      accountRecovery: {
+        blocked: true,
+        state: "ownership_conflict",
+        message: "Unverified: GTLINFRA.",
+        nextAction: {label: "Review portfolio holdings"},
+      },
+      repairTradesCount: 2,
+    });
+    expect(action.kind).toBe(NBA_KIND.ACCOUNT_RECOVERY);
+    expect(action.title).toBe("Portfolio holdings need review");
+    expect(action.detail).toContain("GTLINFRA");
+  });
+
   it("accept_rebalance names the model and picks the OLDEST rebalanceDate", () => {
     const a = focalAction({
       pendingRebalances: [

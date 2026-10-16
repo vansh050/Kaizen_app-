@@ -5,10 +5,11 @@ import { SlidersVerticalIcon, SearchIcon, Trash2, ShoppingCart } from 'lucide-re
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import WishSearch from './WishSearch';
+import { designColor, designFont } from '../../design/literalTokens';
 const star = require('../../assets/star1.png');
 import AwesomeAlert from 'react-native-awesome-alerts';
 import Toast from 'react-native-toast-message'
-import CustomToast from '../../components/customToast'; 
+import CustomToast from '../../components/customToast';
 import DeleteAdviceModal from '../../components/DeleteAdviceModal'
 import WebSocketManager from '../../components/AdviceScreenComponents/DynamicText/WebSocketManager';
 import MissedGainText from '../../components/AdviceScreenComponents/DynamicText/BestPerformerGainText';
@@ -97,12 +98,12 @@ const WatchlistScreen = () => {
         text1Style: {
             color: 'black',
             fontSize: 14,
-            fontFamily: 'Poppins-Medium'
+            fontFamily: designFont('Poppins-Medium')
         },
         text2Style: {
             color: 'black',
             fontSize: 13,
-            fontFamily: 'Poppins-Regular'
+            fontFamily: designFont('Poppins-Regular')
         },
     });
 };
@@ -241,7 +242,6 @@ const WatchlistScreen = () => {
   return (
     <View style={styles.container}>
       <StatusBar backgroundColor="black" barStyle="light-content" />
-
       {!isSearchOpen ? (
         <>
           <View style={styles.tabs}>
@@ -259,10 +259,10 @@ const WatchlistScreen = () => {
           </View>
 
           <View style={styles.searchBarContainer}>
-            <SearchIcon style={{alignContent:'center',alignItems:'center',alignSelf:'center'}} size={16} color={'#918F8F'} />
+            <SearchIcon style={{alignContent:'center',alignItems:'center',alignSelf:'center'}} size={16} color={designColor('918f8f')} />
             <TextInput 
               textAlignVertical='bottom'
-              placeholderTextColor={'#918F8F'}
+              placeholderTextColor={designColor('918f8f')}
               style={styles.searchBar}
               placeholder="Search & add stocks"
               value={searchQuery}
@@ -300,7 +300,7 @@ const WatchlistScreen = () => {
                 right: 0,
                 bottom: 0,
                 opacity: 0.7,
-                backgroundColor: '#fff',
+                backgroundColor: designColor('fff'),
                 borderRadius: 16,
               }}>
                 <View style={{
@@ -348,7 +348,7 @@ const WatchlistScreen = () => {
               </View>
               
               <Text style={{ 
-                fontFamily: 'Satoshi-Bold', 
+                fontFamily: designFont('Satoshi-Bold'), 
                 fontSize: 20,
                 color: APP_VARIANTS.EmptyStateUi.darkerColor,
                 textAlign: 'center',
@@ -358,7 +358,7 @@ const WatchlistScreen = () => {
               </Text>
               
               <Text style={{
-                fontFamily: 'Satoshi-Medium',
+                fontFamily: designFont('Satoshi-Medium'),
                 fontSize: 15,
                 color: APP_VARIANTS.EmptyStateUi.mediumColor,
                 textAlign: 'center',
@@ -385,7 +385,6 @@ const WatchlistScreen = () => {
           />
         </View>
       )}
-    
     </View>
   );
 };
@@ -393,7 +392,7 @@ const WatchlistScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: designColor('fff'),
   },
   toast: {
     position: 'absolute',
@@ -409,12 +408,12 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 20,
-    fontFamily: 'Poppins-Bold',
+    fontFamily: designFont('Poppins-Bold'),
     color: 'black',
     paddingHorizontal: 15,
   },
   rowFront: {
-    borderBottomColor: '#ddd',
+    borderBottomColor: designColor('ddd'),
     borderBottomWidth: 1,
     padding: 15,
     justifyContent: 'center',
@@ -444,7 +443,7 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 15,
     paddingHorizontal: 15,
-    fontFamily: 'Poppins-Regular',
+    fontFamily: designFont('Poppins-Regular'),
     color: 'grey',
   },
   tabs: {
@@ -461,42 +460,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   activeTab: {
-    borderColor: '#000',
+    borderColor: designColor('000'),
   },
   tabText: {
-    fontFamily: 'Satoshi-Regular',
+    fontFamily: designFont('Satoshi-Regular'),
     fontSize: 11,
-    color: '#C8C8C8',
+    color: designColor('c8c8c8'),
   },
   activeTabText: {
-    fontFamily: 'Satoshi-Medium',
-    color: '#000',
+    fontFamily: designFont('Satoshi-Medium'),
+    color: designColor('000'),
     fontSize:12,
   },
   searchBarContainer: {
     flexDirection: 'row',
     justifyContent:'center',
     textAlignVertical:'center',
-    backgroundColor: '#fff',
+    backgroundColor: designColor('fff'),
     borderRadius: 5,
     borderWidth: 1,
     paddingHorizontal: 10,
-    borderColor: '#E6E6E6',
+    borderColor: designColor('e6e6e6'),
     marginHorizontal: 20,
   },
   searchBar: {
     paddingVertical:5,
     textAlignVertical:'center',
     flex:1,
-    fontFamily: 'Satoshi-Medium',
+    fontFamily: designFont('Satoshi-Medium'),
     fontSize: 13,
     marginLeft: 10,
   },
   stockLimit: {
-    fontFamily: 'Satoshi-Medium',
+    fontFamily: designFont('Satoshi-Medium'),
     fontSize: 13,
     textAlignVertical:'center',
-    color: '#918F8F',
+    color: designColor('918f8f'),
     marginRight: 10,
   },
   filterButton: {
@@ -518,8 +517,8 @@ const styles = StyleSheet.create({
     marginHorizontal:8,
     paddingVertical:5,
     borderWidth:1,
-    borderColor:'#e9e9e9',
-    backgroundColor: '#F9FAFB',
+    borderColor:designColor('e9e9e9'),
+    backgroundColor: designColor('f9fafb'),
     borderRadius: 8,
     alignItems: 'center',
   },
@@ -535,23 +534,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color:'black',
     paddingHorizontal:10,
-    fontFamily:'Satoshi-Medium',
+    fontFamily:designFont('Satoshi-Medium'),
     fontWeight: 'bold',
   },
   stockNamebelow: {
-    fontFamily: 'Poppins-Light',
+    fontFamily: designFont('Poppins-Light'),
     fontSize: 14,
-    color: '#C8C8C8',
+    color: designColor('c8c8c8'),
   },
   stockPrice: {
-    fontFamily: 'Poppins-Regular',
+    fontFamily: designFont('Poppins-Regular'),
     fontSize: 16,
-    color: '#000',
+    color: designColor('000'),
   },
   stockPricegainloss: {
-    fontFamily: 'Poppins-SemiBold',
+    fontFamily: designFont('Poppins-SemiBold'),
     fontSize: 14,
-    color: '#73BE4A',
+    color: designColor('73be4a'),
   },
   emptyStateContainer: {
     flex: 1,
@@ -565,21 +564,21 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 20,
-    fontFamily: 'Poppins-Medium',
-    color: '#000',
+    fontFamily: designFont('Poppins-Medium'),
+    color: designColor('000'),
     marginTop:5
   },
   emptySubText: {
     fontSize: 14,
-    color: '#666',
+    color: designColor('666'),
     marginTop: 3,
-    fontFamily: 'Poppins-Light',
+    fontFamily: designFont('Poppins-Light'),
     textAlign: 'center',
     paddingHorizontal: 85,
   },
   swapUpContainer: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: designColor('fff'),
   },
 });
 

@@ -14,13 +14,13 @@
 #    Always strictly increasing & unique -> never a "redundant binary" reject.
 #
 #  * MARKETING_VERSION:
-#      floor = highest App Store *release* version (states that close a train:
-#              READY_FOR_SALE / APPROVED / PENDING_* / REPLACED_WITH_NEW_VERSION).
+#      floor = highest App Store version train, including versions currently
+#              waiting for or undergoing App Review.
 #      - If the project's own marketing version is already > floor, keep it
 #        (so many TestFlight builds share e.g. 2.1, differing only by build no.).
 #      - Otherwise bump the floor's last component (2.0 -> 2.1) so the upload
-#        is always strictly higher than the last approved version and never
-#        lands on a closed train.
+#        is always strictly higher than every existing App Store version train
+#        and never collides with a version already submitted for review.
 #
 # Required env:
 #   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH, ASC_BUNDLE_ID
@@ -50,11 +50,32 @@ token = JWT.encode(
   private_key, 'ES256', { kid: key_id, typ: 'JWT' }
 )
 
+# App Store Connect returns transient 500s / read timeouts (2026-10-16 every
+# CI iOS build died on one). Retry idempotent GETs; never retry a POST.
+ASC_RETRY_WAITS = [10, 20, 40, 60].freeze
+ASC_NETWORK_ERRORS = [Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNRESET,
+                      Errno::ECONNREFUSED, EOFError, OpenSSL::SSL::SSLError].freeze
+def asc_http_with_retry(retryable)
+  waits = retryable ? ASC_RETRY_WAITS.dup : []
+  loop do
+    begin
+      res = yield
+      transient = res.code.to_i >= 500 || res.code.to_i == 429
+      return res unless transient && !waits.empty?
+      warn "ASC #{res.code}; retrying in #{waits.first}s"
+    rescue *ASC_NETWORK_ERRORS => e
+      raise if waits.empty?
+      warn "ASC #{e.class}; retrying in #{waits.first}s"
+    end
+    sleep waits.shift
+  end
+end
+
 def asc_get(path, token)
   uri = URI("https://api.appstoreconnect.apple.com#{path}")
   req = Net::HTTP::Get.new(uri)
   req['Authorization'] = "Bearer #{token}"
-  res = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http| http.request(req) }
+  res = asc_http_with_retry(true) { Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: 60) { |http| http.request(req) } }
   abort "ASC API error #{res.code} for #{path}: #{res.body}" unless res.code.to_i.between?(200, 299)
   JSON.parse(res.body)
 end
@@ -87,33 +108,28 @@ builds = asc_get("/v1/builds?filter[app]=#{app_id}&limit=200&sort=-uploadedDate"
 build_versions = (builds['data'] || []).map { |b| b.dig('attributes', 'version').to_i }
 next_build = (build_versions.max || 0) + 1
 
-# --- marketing version floor: highest released App Store version -------------
-# Apple reports these in two fields: the legacy appStoreState and the newer
-# appVersionState (READY_FOR_DISTRIBUTION, ACCEPTED, ...). Missing the newer
-# names reused an approved version — ARFS 11.2.23, run 38881599390 (409
-# "train version is closed"). Check both fields.
-CLOSING_STATES = %w[
-  READY_FOR_SALE APPROVED PENDING_APPLE_RELEASE PENDING_DEVELOPER_RELEASE
-  REPLACED_WITH_NEW_VERSION PENDING_CONTRACT REMOVED_FROM_SALE
-  READY_FOR_DISTRIBUTION ACCEPTED PENDING_RELEASE PROCESSING_FOR_DISTRIBUTION
-].freeze
-
+# --- marketing version floor: highest App Store version train ----------------
+# Do not filter by state. In particular, WAITING_FOR_REVIEW / IN_REVIEW trains
+# must count: Markup version 12 (build 15) was under review on 2026-08-11, and
+# ignoring that train incorrectly selected marketing version 11.1 for build 16.
 asv = asc_get("/v1/apps/#{app_id}/appStoreVersions?limit=200", token)
-released = (asv['data'] || []).select { |v|
-             attrs = v['attributes'] || {}
-             CLOSING_STATES.include?(attrs['appStoreState']) || CLOSING_STATES.include?(attrs['appVersionState'])
-           }
-                              .map { |v| v.dig('attributes', 'versionString') }
-                              .compact
-floor = released.max_by { |v| v.split('.').map(&:to_i) }
+version_trains = (asv['data'] || []).map do |v|
+  {
+    version: v.dig('attributes', 'versionString'),
+    state: v.dig('attributes', 'appStoreState')
+  }
+end.select { |v| !v[:version].to_s.empty? }
+floor_train = version_trains.max_by { |v| v[:version].split('.').map(&:to_i) }
+floor = floor_train&.dig(:version)
+warn "App Store marketing-version floor: #{floor || 'none'} (#{floor_train&.dig(:state) || 'none'})"
 
 marketing =
   if floor.nil?
     project_mv
   elsif vcmp(project_mv, floor) > 0
-    project_mv          # project version already ahead of the last release
+    project_mv          # project version already ahead of the highest train
   else
-    bump_last(floor)    # stale -> jump just past the last release
+    bump_last(floor)    # stale -> jump just past the highest existing train
   end
 
 puts "BUILD_NUMBER=#{next_build}"

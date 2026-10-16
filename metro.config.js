@@ -1,9 +1,16 @@
 const path = require('path');
 const fs = require('fs');
-const { getDefaultConfig, mergeConfig } = require("@react-native/metro-config");
+const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
+const {
+  getDesignLiteralCacheKey,
+} = require('./scripts/babel-plugin-design-literals');
 
 const defaultConfig = getDefaultConfig(__dirname);
 const { resolver: { sourceExts, assetExts } } = defaultConfig;
+// Worktrees commonly symlink node_modules to the canonical checkout. Metro's
+// explicit module map must use the real directory or release bundling can
+// report an existing @babel/runtime helper as missing.
+const NODE_MODULES_PATH = fs.realpathSync(path.resolve(__dirname, 'node_modules'));
 
 // @alphaquark/mobile-sdk lives outside this project root at ../../alphaquark-mobile-sdk
 // (STANDARD LAYOUT, see below). npm installs it as a symlink into
@@ -36,6 +43,13 @@ const SDK_PATH_CANDIDATES = [
 ];
 const SDK_PATH =
   SDK_PATH_CANDIDATES.find((p) => fs.existsSync(p)) || SDK_PATH_CANDIDATES[0];
+// Packages that must exist exactly once in the bundle. See resolveRequest.
+const SINGLETON_PACKAGES = ['react', 'react-native', 'react-native-webview'];
+const APP_ORIGIN = path.join(__dirname, 'index.js');
+const WATCH_FOLDERS = [SDK_PATH];
+if (!NODE_MODULES_PATH.startsWith(`${__dirname}${path.sep}`)) {
+  WATCH_FOLDERS.push(NODE_MODULES_PATH);
+}
 
 /**
  * Metro configuration
@@ -44,13 +58,38 @@ const SDK_PATH =
  * @type {import('metro-config').MetroConfig}
  */
 const config = {
+  // Metro does not track the build-time literals.json dependency because the
+  // Babel plugin replaces the marker call with a string literal. Put the
+  // selected variant plus the literal maps in Metro's global transform key so
+  // restarting Metro after either changes cannot reuse a half-reskinned cache.
+  cacheVersion: `1.0-${getDesignLiteralCacheKey()}`,
   transformer: {
-    babelTransformerPath: require.resolve("react-native-svg-transformer"),
+    babelTransformerPath: require.resolve('react-native-svg-transformer'),
   },
   resolver: {
-    assetExts: assetExts.filter((ext) => ext !== "svg"),
-    sourceExts: [...sourceExts, "svg"],
-    resolverMainFields: ["sbmodern", "react-native", "browser", "main"],
+    // Resolve the singleton packages (and their subpaths, e.g.
+    // react/jsx-runtime) from the APP for every importer, the SDK included.
+    // iOS CI runs `npm install` in the SDK checkout, which installs the SDK's
+    // React 18 devDependency next to its lib; SDK files then resolved that
+    // copy while the app used React 19 — two Reacts, crash at launch
+    // ("Cannot read property 'useState' of null"). Same fix as Markup
+    // 9d90a5fb8 (2026-10-14); ported 2026-10-16 after TestFlight crashes.
+    resolveRequest: (context, moduleName, platform) => {
+      const pinned = SINGLETON_PACKAGES.some(
+        (pkg) => moduleName === pkg || moduleName.startsWith(`${pkg}/`),
+      );
+      if (pinned && context.originModulePath !== APP_ORIGIN) {
+        return context.resolveRequest(
+          {...context, originModulePath: APP_ORIGIN},
+          moduleName,
+          platform,
+        );
+      }
+      return context.resolveRequest(context, moduleName, platform);
+    },
+    assetExts: assetExts.filter((ext) => ext !== 'svg'),
+    sourceExts: [...sourceExts, 'svg'],
+    resolverMainFields: ['sbmodern', 'react-native', 'browser', 'main'],
     // Direct path map for the SDK package itself, plus its peer deps —
     // when SDK files (sitting at SDK_PATH/lib/...) `require('react')`,
     // Metro must resolve to the HOST app's react copy, not look in the
@@ -59,19 +98,19 @@ const config = {
     // the project root.
     extraNodeModules: {
       '@alphaquark/mobile-sdk': SDK_PATH,
-      react: path.resolve(__dirname, 'node_modules/react'),
-      'react-native': path.resolve(__dirname, 'node_modules/react-native'),
+      react: path.join(NODE_MODULES_PATH, 'react'),
+      'react-native': path.join(NODE_MODULES_PATH, 'react-native'),
       'react-native-webview': path.resolve(
-        __dirname,
-        'node_modules/react-native-webview',
+        NODE_MODULES_PATH,
+        'react-native-webview',
       ),
       // SDK is shipped as compiled JS with babel-transformed async/await
       // → require('@babel/runtime/helpers/asyncToGenerator') etc. Ensure
       // those resolve to the host app's @babel/runtime install.
-      '@babel/runtime': path.resolve(__dirname, 'node_modules/@babel/runtime'),
+      '@babel/runtime': path.join(NODE_MODULES_PATH, '@babel/runtime'),
     },
   },
-  watchFolders: [SDK_PATH],
+  watchFolders: WATCH_FOLDERS,
 };
 
 module.exports = mergeConfig(defaultConfig, config);

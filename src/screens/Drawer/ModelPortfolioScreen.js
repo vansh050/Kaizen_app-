@@ -1,3 +1,4 @@
+import {isPortfolioAccessRestricted} from '../../utils/expectedApiStates';
 /**
  * ModelPortfolioScreen — container (Phase I, 2026-05-02)
  *
@@ -10,7 +11,7 @@
  * FlatLists for MP and Bespoke are passed as render-function slots.
  */
 
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useRef} from 'react';
 import {
   View,
   FlatList,
@@ -30,7 +31,7 @@ import server from '../../utils/serverConfig';
 import {resolveImageUrl} from '../../utils/resolveImageUrl';
 import {GitForkIcon} from 'lucide-react-native';
 import Config from 'react-native-config';
-import {getAdvisorSubdomain} from '../../utils/variantHelper';
+import {getAdvisorSubdomain, getTenantSubdomain} from '../../utils/variantHelper';
 import {generateToken} from '../../utils/SecurityTokenManager';
 import MPCardBespoke from '../../components/ModelPortfolioComponents/MPCardBespoke';
 import RecommendationSuccessModal from '../../components/ModelPortfolioComponents/RecommendationSuccessModal';
@@ -41,15 +42,30 @@ import useTokens from '../../theme/useTokens';
 import { useComponent } from '../../design/useDesign';
 import useHomeMarketSummary from '../Home/hooks/useHomeMarketSummary';
 import { shapeMpPlan, shapeBespokePlan } from '../../utils/alphanomyPlanShape';
-import {useAccountEmail, getAccountDisplayName} from '../../utils/accountEmail';
+import {useAccountEmail} from '../../utils/accountEmail';
+import {
+  getAdvisorContentProfile,
+} from '../../utils/advisorContentProfile';
+
+import { designColor, designFont } from '../../design/literalTokens';
+import {attachCategoryImages, groupBespokePlansByCategory} from '../../utils/planCategories';
+import usePlanCategoryImages from '../../hooks/usePlanCategoryImages';
 
 const {width, width: ScreenWidth} = Dimensions.get('window');
 
 const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
-  const {userDetails, broker, getUserDeatils, configData} = useTrade();
+  const {
+    userDetails,
+    broker,
+    getUserDeatils,
+    configData,
+    modelPortfolioStrategyfinal,
+    modelPortfolioEntitlementsLoaded,
+  } = useTrade();
 
   const config = useConfig();
   const tokens = useTokens();
+  const advisorContent = getAdvisorContentProfile();
   const gradient1 = tokens.colors.brand.gradientStart;
   const gradient2 = tokens.colors.brand.gradientEnd;
   const mainColor = tokens.colors.brand.primary;
@@ -67,27 +83,49 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
   const navigation = useNavigation();
   const user = auth.currentUser;
   // Apple users have no usable currentUser.email — the identity is the typed
-  // account email. useAccountEmail() applies that precedence and re-renders
-  // when it resolves; reading user.email here left this whole screen (the
+  // account email. Reading user.email here left this whole screen (the
   // "Plans" tab) empty because the fetch gate below never opened. See
   // src/utils/accountEmail.js.
   const userEmail = useAccountEmail();
 
   // Variant-facing user name for the alphanomy `_AppHeader` greeting.
   // Declared AFTER `user` so we don't TDZ-read an undeclared binding.
-  const userName = getAccountDisplayName(userDetails?.name, user?.displayName);
+  const userName = userDetails?.name || user?.displayName || '';
 
   // Variant-facing alphanomy plan rows — derived from the same catalog
   // state the legacy MP card list reads (`allStrategy`, `allBespoke`).
   // Default presentation ignores `alphanomyPlans`.
   const alphanomyPlans = React.useMemo(
       () => ({
-          mp: (allStrategy || []).map((p) => shapeMpPlan(p)).filter(Boolean),
+          mp: (allStrategy || []).map((p) => {
+            const shaped = shapeMpPlan(p);
+            if (!shaped) return null;
+            const planName = String(p?.name || p?.model_name || '')
+              .toLowerCase()
+              .replace(/%20/g, ' ')
+              .replace(/\s+/g, '_')
+              .trim();
+            const isSubscribed = (modelPortfolioStrategyfinal || []).some((portfolio) =>
+              String(portfolio?.model_name || '')
+                .toLowerCase()
+                .replace(/%20/g, ' ')
+                .replace(/\s+/g, '_')
+                .trim() === planName,
+            );
+            return {...shaped, isSubscribed, subscriptionReady: modelPortfolioEntitlementsLoaded};
+          }).filter(Boolean),
           bespoke: (allBespoke || []).map((p) => shapeBespokePlan(p)).filter(Boolean),
       }),
-      [allStrategy, allBespoke],
+      [allStrategy, allBespoke, modelPortfolioStrategyfinal, modelPortfolioEntitlementsLoaded],
   );
   const [loading, setLoading] = useState();
+  // undefined = all bespoke plans; a name or null (uncategorised) = filtered.
+  const [bespokeCategoryFilter, setBespokeCategoryFilter] = useState(undefined);
+  const categoryImages = usePlanCategoryImages(getTenantSubdomain(configData));
+  const bespokeCategoryGroups = React.useMemo(
+    () => attachCategoryImages(groupBespokePlansByCategory(alphanomyPlans.bespoke), categoryImages),
+    [alphanomyPlans.bespoke, categoryImages],
+  );
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [OpenSubscribeModel, setOpenSubscribeModel] = useState(false);
@@ -181,7 +219,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
         {
           headers: {
             'Content-Type': 'application/json',
-            'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || configData?.subdomain || getAdvisorSubdomain(),
+            'X-Advisor-Subdomain': getTenantSubdomain(configData),
             'aq-encrypted-key': generateToken(
               Config.REACT_APP_AQ_KEYS,
               Config.REACT_APP_AQ_SECRET,
@@ -197,7 +235,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
     } finally {
       setRefreshingBespoke(false);
     }
-  }, [advisorTag, userEmail]);
+  }, [advisorTag, userEmail, configData]);
 
   const getAllStrategy = useCallback(async () => {
     setRefreshingMP(true);
@@ -207,7 +245,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
         {
           headers: {
             'Content-Type': 'application/json',
-            'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || configData?.subdomain || getAdvisorSubdomain(),
+            'X-Advisor-Subdomain': getTenantSubdomain(configData),
             'aq-encrypted-key': generateToken(
               Config.REACT_APP_AQ_KEYS,
               Config.REACT_APP_AQ_SECRET,
@@ -223,17 +261,21 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
     } finally {
       setRefreshingMP(false);
     }
-  }, [advisorTag, userEmail]);
+  }, [advisorTag, userEmail, configData]);
 
+  const strategyRequest = useRef(0);
   const getSingleStrategyDetails = useCallback(async fileName => {
+    const requestId = ++strategyRequest.current;
     if (!fileName) return;
+    setModalContext(prev => ({...prev, singleStrategyDetails: null}));
+    setLatestRebalance(null);
     try {
       const res = await axios.get(
-        `${server.server.baseUrl}api/model-portfolio/portfolios/strategy/${fileName}`,
+        `${server.server.baseUrl}api/model-portfolio/portfolios/strategy/${encodeURIComponent(fileName)}`,
         {
           headers: {
             'Content-Type': 'application/json',
-            'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || configData?.subdomain || getAdvisorSubdomain(),
+            'X-Advisor-Subdomain': getTenantSubdomain(configData),
             'aq-encrypted-key': generateToken(
               Config.REACT_APP_AQ_KEYS,
               Config.REACT_APP_AQ_SECRET,
@@ -241,6 +283,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
           },
         },
       );
+      if (requestId !== strategyRequest.current) return;
       const portfolioData = res.data[0].originalData;
       setModalContext(prev => ({
         ...prev,
@@ -253,9 +296,10 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
         setLatestRebalance(latest);
       }
     } catch (error) {
-      console.error('Error fetching single strategy:', error.response);
+      if (requestId !== strategyRequest.current || isPortfolioAccessRestricted(error)) return;
+      console.error('Error fetching single strategy:', error?.response?.status || error?.message);
     }
-  }, []);
+  }, [configData]);
 
   const getSpecificPlan = useCallback(
     async specificPlanId => {
@@ -266,7 +310,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
           {
             headers: {
               'Content-Type': 'application/json',
-              'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || configData?.subdomain || getAdvisorSubdomain(),
+              'X-Advisor-Subdomain': getTenantSubdomain(configData),
               'aq-encrypted-key': generateToken(
                 Config.REACT_APP_AQ_KEYS,
                 Config.REACT_APP_AQ_SECRET,
@@ -279,7 +323,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
         console.error('Error fetching specific plan:', error);
       }
     },
-    [userEmail],
+    [userEmail, configData],
   );
 
   useEffect(() => {
@@ -288,7 +332,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
       getAllBespoke();
       getAllStrategy();
     }
-  }, [userEmail, advisorTag]);
+  }, [userEmail, advisorTag, configData]);
 
   useEffect(() => {
     if (onDataLoaded) {
@@ -332,7 +376,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
       specificPlan: modelName,
       specificPlanDetails: modelName,
       fileName: modelName?.name,
-      singleStrategyDetails: modalContext.singleStrategyDetails,
+      singleStrategyDetails: null,
     });
     setPaymentModal(true);
   };
@@ -354,7 +398,22 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
     const tabKey =
       params.kind === 'bespoke' ? 'bespoke' : 'modelportfolio';
     const tabIdx = routes.findIndex(r => r.key === tabKey);
-    if (tabIdx >= 0 && tabIdx !== index) setIndex(tabIdx);
+    // The Bespoke tab only exists once the bespoke catalogue has loaded, so a
+    // cold navigate from Home arrives before it. Keep the params until the
+    // target tab exists — this effect re-runs when `routes` changes — instead
+    // of clearing them and landing on the first tab.
+    if (tabIdx < 0) return;
+    if (tabIdx !== index) setIndex(tabIdx);
+    // Category entry point from Home (docs/BESPOKE_PLAN_CATEGORIES.md, web
+    // repo): `bespokeCategory` is a category name, or null for uncategorised
+    // plans. Absent = show every bespoke plan.
+    if (params.kind === 'bespoke') {
+      setBespokeCategoryFilter(
+        Object.prototype.hasOwnProperty.call(params, 'bespokeCategory')
+          ? params.bespokeCategory
+          : undefined,
+      );
+    }
 
     // 2. Action processing (subscribe / viewMore)
     const wantsSubscribe = params.subscribe === true;
@@ -367,6 +426,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
           subscribe: undefined,
           viewMore: undefined,
           planName: undefined,
+          bespokeCategory: undefined,
         });
       }
       return;
@@ -394,6 +454,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
         subscribe: undefined,
         viewMore: undefined,
         planName: undefined,
+        bespokeCategory: undefined,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -434,7 +495,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
       url: `${server.server.baseUrl}api/all-clients/user/${userEmail}`,
       headers: {
         'Content-Type': 'application/json',
-        'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || configData?.subdomain || getAdvisorSubdomain(),
+        'X-Advisor-Subdomain': getTenantSubdomain(configData),
         'aq-encrypted-key': generateToken(
           Config.REACT_APP_AQ_KEYS,
           Config.REACT_APP_AQ_SECRET,
@@ -502,11 +563,31 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
     />
   );
 
-  const sortedStrategy = [...(allStrategy || [])].sort((a, b) => {
-    const aSubscribed = a?.subscription != null ? 1 : 0;
-    const bSubscribed = b?.subscription != null ? 1 : 0;
-    return bSubscribed - aSubscribed;
-  });
+  // RA request (2026-08-13): when the tenant pins a FIXED plan-card ordering
+  // (whitelabel/content.js MONEYMAN_PLAN_ORDERING === 'fixed'), the card
+  // sequence NEVER changes — cards stay in the fixed catalog order MAMM →
+  // MFCC → MSRO (green → purple → blue) regardless of subscription state or
+  // backend ordering. The legacy subscription-first sort (which jumps a
+  // subscribed plan to the top and shifts every card's color) is kept for
+  // other tenants. Unknown/new plans append AFTER the fixed trio, preserving
+  // the established sequence.
+  const sortedStrategy =
+    advisorContent.planOrdering === 'fixed'
+      ? [...(allStrategy || [])].sort((a, b) => {
+          const rankOf = plan => {
+            const upper = String(plan?.name || '').toUpperCase();
+            const idx = advisorContent.planCards.findIndex(pc =>
+              pc.keys.some(key => upper.includes(key)),
+            );
+            return idx === -1 ? advisorContent.planCards.length : idx;
+          };
+          return rankOf(a) - rankOf(b);
+        })
+      : [...(allStrategy || [])].sort((a, b) => {
+          const aSubscribed = a?.subscription != null ? 1 : 0;
+          const bSubscribed = b?.subscription != null ? 1 : 0;
+          return bSubscribed - aSubscribed;
+        });
 
   // In the tabbed Plans view, time-cycle plans get their own tab, so split
   // them out of the Model Portfolio list. Horizontal/home lists keep showing
@@ -522,6 +603,11 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
         item._id || item.id || item.model_name?.toString() || idx.toString()
       }
       horizontal={type === 'mphorizontal'}
+      initialNumToRender={type === 'mphorizontal' ? 2 : 8}
+      maxToRenderPerBatch={type === 'mphorizontal' ? 2 : 8}
+      updateCellsBatchingPeriod={type === 'mphorizontal' ? 80 : 50}
+      windowSize={type === 'mphorizontal' ? 3 : 7}
+      removeClippedSubviews={true}
       refreshControl={
         <RefreshControl refreshing={refreshingMP} onRefresh={getAllStrategy} />
       }
@@ -530,7 +616,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
       ListEmptyComponent={
         <View style={localStyles.emptyContainer}>
           <View style={localStyles.iconWrapper}>
-            <GitForkIcon size={60} color="#6B7280" />
+            <GitForkIcon size={60} color={designColor('6b7280')} />
           </View>
           <View style={localStyles.textWrapper}>
             <Text style={localStyles.emptyTitle}>No Model Portfolio Available</Text>
@@ -579,6 +665,11 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
       }}
       keyExtractor={(item, idx) => item._id || item.id || idx.toString()}
       horizontal={type === 'bespokehorizontal'}
+      initialNumToRender={type === 'bespokehorizontal' ? 2 : 8}
+      maxToRenderPerBatch={type === 'bespokehorizontal' ? 2 : 8}
+      updateCellsBatchingPeriod={type === 'bespokehorizontal' ? 80 : 50}
+      windowSize={type === 'bespokehorizontal' ? 3 : 7}
+      removeClippedSubviews={true}
       contentContainerStyle={{padding: 5}}
       refreshControl={
         <RefreshControl
@@ -590,7 +681,7 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
         refreshingBespoke ? null : (
           <View style={localStyles.emptyContainer}>
             <View style={localStyles.iconWrapper}>
-              <GitForkIcon size={60} color="#6B7280" />
+              <GitForkIcon size={60} color={designColor('6b7280')} />
             </View>
             <View style={localStyles.textWrapper}>
               <Text style={localStyles.emptyTitle}>
@@ -700,10 +791,15 @@ const ModelPortfolioScreen = ({type = '', onDataLoaded}) => {
         userName,
         config,
         alphanomyPlans,
+        bespokeCategoryGroups,
+        bespokeCategoryFilter,
       }}
       actions={{
         onGoBack: () => navigation.goBack(),
+        onHeaderBack: () => type === 'tab' ? navigation.navigate('Home') : navigation.goBack(),
+        onNotifications: () => navigation.navigate('NotificationListScreen'),
         onTabIndexChange: setIndex,
+        onBespokeCategoryChange: setBespokeCategoryFilter,
         onCloseModal: () => setModalVisible(false),
         // Alphanomy variant: tapping Subscribe Now on a shaped plan card
         // resolves the raw plan from allStrategy/allBespoke by id and fires
@@ -760,12 +856,12 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 20,
     paddingHorizontal: 20,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: designColor('f9fafb'),
     borderRadius: 12,
     marginHorizontal: 20,
     width: Dimensions.get('window').width - 40,
     marginTop: 20,
-    shadowColor: '#000',
+    shadowColor: designColor('000'),
     shadowOffset: {width: 0, height: 4},
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -773,7 +869,7 @@ const localStyles = StyleSheet.create({
   },
   iconWrapper: {
     marginBottom: 20,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: designColor('e5e7eb'),
     borderRadius: 50,
     padding: 10,
   },
@@ -782,15 +878,15 @@ const localStyles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 14,
-    fontFamily: 'Poppins-SemiBold',
-    color: '#111827',
+    fontFamily: designFont('Poppins-SemiBold'),
+    color: designColor('111827'),
     textAlign: 'center',
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 14,
-    fontFamily: 'Poppins-Medium',
-    color: '#6B7280',
+    fontFamily: designFont('Poppins-Medium'),
+    color: designColor('6b7280'),
     textAlign: 'center',
     lineHeight: 20,
   },

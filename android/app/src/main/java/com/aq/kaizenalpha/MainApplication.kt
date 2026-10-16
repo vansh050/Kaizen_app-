@@ -21,6 +21,8 @@ class MainApplication : Application(), ReactApplication {
             PackageList(this).packages.apply {
               // Packages that cannot be autolinked yet can be added manually here, for example:
               // add(MyReactNativePackage())
+              // Android pan mode for focused inputs inside RN Modals (Alphab2bapp).
+              add(ModalSoftInputPackage())
             }
 
         override fun getJSMainModuleName(): String = "index"

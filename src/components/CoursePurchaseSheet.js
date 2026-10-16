@@ -61,11 +61,18 @@ import couponService from '../FunctionCall/services/CouponService';
 import cashfreeOrderService from '../FunctionCall/services/CashFreeOrderService';
 import gumletService from '../FunctionCall/services/GumletService';
 import studentPaymentService from '../FunctionCall/services/StudentPaymentService';
+import {
+  choosePhonePeGroup,
+  openAndAwaitReturn,
+  phonePeAppMetadata,
+} from '../FunctionCall/services/AppPaymentGateway';
 import { getAuth } from '@react-native-firebase/auth';
 import {
   getCashfreeEnvironment,
   friendlyPaymentError,
 } from '../utils/cashfreeEnv';
+
+import { designColor } from '../design/literalTokens';
 
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
@@ -320,7 +327,12 @@ export default function CoursePurchaseSheet({ visible, onClose, course, onPurcha
       await payWithRazorpay();
       return;
     }
-    if (gw?.gateway === 'payu' || gw?.gateway === 'phonepe') {
+    if (gw?.gateway === 'phonepe') {
+      await payWithPhonePe();
+      return;
+    }
+    // PayU needs a hosted browser form, so the buyer finishes on the website.
+    if (gw?.gateway === 'payu') {
       if (gw.website) {
         Linking.openURL(`${gw.website}/course/${course._id}`).catch(() => {});
         setErrorMsg('Please complete this purchase on the website we just opened. Your course appears here once paid.');
@@ -386,6 +398,64 @@ export default function CoursePurchaseSheet({ visible, onClose, course, onPurcha
     // Paid either way at this point: anything short of fulfilled is
     // finished by the server's reconciliation within minutes.
     finishStudentPurchase(order.orderId, final?.status === 'fulfilled');
+  }
+
+  // PhonePe: the order is opened on the merchant ID for the payment group the
+  // buyer picks, paid in PhonePe, and confirmed by the server when the buyer
+  // returns (the server's reconciliation finishes it if the app is closed).
+  async function payWithPhonePe() {
+    const paymentInstrumentGroup = await choosePhonePeGroup();
+    if (paymentInstrumentGroup === null) {
+      setPhase('form');
+      return;
+    }
+    let order;
+    try {
+      order = await studentPaymentService.startCourseCheckout({
+        courseId: course._id,
+        couponId: appliedCoupon?.couponId || appliedCoupon?._id || undefined,
+        name: name.trim(),
+        mobile: mobile.trim(),
+        pan: pan.trim().toUpperCase(),
+        gstin: gstin.trim().toUpperCase() || undefined,
+        paymentInstrumentGroup,
+        channelMetadata: phonePeAppMetadata(),
+      });
+    } catch (e) {
+      if (e?.code === 'USE_CASHFREE') {
+        await payWithCashfree();
+        return;
+      }
+      setErrorMsg(e?.message || 'Could not start payment');
+      setPhase('form');
+      return;
+    }
+    const redirectUrl = order?.checkout?.redirectUrl;
+    if (!redirectUrl) {
+      setErrorMsg('PhonePe did not return a checkout page. Please try again.');
+      setPhase('form');
+      return;
+    }
+    try {
+      await openAndAwaitReturn(redirectUrl);
+    } catch (e) {
+      setErrorMsg(e?.message || 'Could not open PhonePe');
+      setPhase('form');
+      return;
+    }
+    const final = await studentPaymentService.waitForFinal(order.orderId, { timeoutMs: 30000 });
+    if (final?.status === 'fulfilled') {
+      finishStudentPurchase(order.orderId, true);
+    } else if (final?.status === 'failed' || final?.status === 'expired') {
+      setErrorMsg('PhonePe reported that this payment was not completed.');
+      setPhase('form');
+    } else {
+      // Not confirmed yet — either still processing or not paid. Never show
+      // a purchase as done on an unconfirmed order; the server finishes a
+      // real payment and the course then appears in My Courses.
+      setErrorMsg('Payment not confirmed yet. If you completed it in PhonePe, the course will appear in a few minutes.');
+      setPhase('form');
+    }
   }
 
   function finishStudentPurchase(orderId, confirmed) {
@@ -499,12 +569,12 @@ export default function CoursePurchaseSheet({ visible, onClose, course, onPurcha
       .add(CFPaymentModes.PAY_LATER)
       .build();
     const theme = new CFThemeBuilder()
-      .setNavigationBarBackgroundColor('#16a34a')
-      .setNavigationBarTextColor('#FFFFFF')
-      .setButtonBackgroundColor('#16a34a')
-      .setButtonTextColor('#FFFFFF')
-      .setPrimaryTextColor('#111827')
-      .setSecondaryTextColor('#6b7280')
+      .setNavigationBarBackgroundColor(designColor('16a34a'))
+      .setNavigationBarTextColor(designColor('ffffff'))
+      .setButtonBackgroundColor(designColor('16a34a'))
+      .setButtonTextColor(designColor('ffffff'))
+      .setPrimaryTextColor(designColor('111827'))
+      .setSecondaryTextColor(designColor('6b7280'))
       .build();
     const dropPayment = new CFDropCheckoutPayment(session, paymentModes, theme);
     try {
@@ -631,7 +701,7 @@ export default function CoursePurchaseSheet({ visible, onClose, course, onPurcha
                     style={styles.couponApplyBtn}
                   >
                     {couponLoading
-                      ? <ActivityIndicator color="#fff" />
+                      ? <ActivityIndicator color={designColor('fff')} />
                       : <Text style={styles.couponApplyText}>Apply</Text>}
                   </TouchableOpacity>
                 )}
@@ -649,8 +719,8 @@ export default function CoursePurchaseSheet({ visible, onClose, course, onPurcha
                 </View>
                 {discount > 0 && (
                   <View style={styles.totalRow}>
-                    <Text style={[styles.totalLabel, { color: '#16a34a' }]}>Discount</Text>
-                    <Text style={[styles.totalValue, { color: '#16a34a' }]}>– ₹{discount.toLocaleString()}</Text>
+                    <Text style={[styles.totalLabel, { color: designColor('16a34a') }]}>Discount</Text>
+                    <Text style={[styles.totalValue, { color: designColor('16a34a') }]}>– ₹{discount.toLocaleString()}</Text>
                   </View>
                 )}
                 <View style={[styles.totalRow, styles.totalRowFinal]}>
@@ -667,7 +737,7 @@ export default function CoursePurchaseSheet({ visible, onClose, course, onPurcha
 
               {phase === 'paying' ? (
                 <View style={styles.payingBox}>
-                  <ActivityIndicator color="#16a34a" />
+                  <ActivityIndicator color={designColor('16a34a')} />
                   <Text style={styles.payingText}>Working… don't close this window.</Text>
                 </View>
               ) : (
@@ -690,41 +760,41 @@ export default function CoursePurchaseSheet({ visible, onClose, course, onPurcha
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
-  sheet: { backgroundColor: '#ffffff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, paddingBottom: 32, maxHeight: '90%' },
+  sheet: { backgroundColor: designColor('ffffff'), borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, paddingBottom: 32, maxHeight: '90%' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: '#111827', flex: 1 },
-  closeX: { fontSize: 26, color: '#9ca3af', paddingHorizontal: 4 },
-  courseTitle: { fontSize: 14, fontWeight: '600', color: '#111827', marginTop: 10 },
-  courseMeta: { fontSize: 11, color: '#6b7280', marginTop: 4 },
+  headerTitle: { fontSize: 16, fontWeight: '700', color: designColor('111827'), flex: 1 },
+  closeX: { fontSize: 26, color: designColor('9ca3af'), paddingHorizontal: 4 },
+  courseTitle: { fontSize: 14, fontWeight: '600', color: designColor('111827'), marginTop: 10 },
+  courseMeta: { fontSize: 11, color: designColor('6b7280'), marginTop: 4 },
   inputReadOnly: { opacity: 0.7 },
-  doneBox: { marginTop: 16, backgroundColor: '#f0fdf4', borderColor: '#bbf7d0', borderWidth: 1, borderRadius: 8, padding: 14 },
-  doneText: { color: '#166534', fontSize: 13 },
+  doneBox: { marginTop: 16, backgroundColor: designColor('f0fdf4'), borderColor: designColor('bbf7d0'), borderWidth: 1, borderRadius: 8, padding: 14 },
+  doneText: { color: designColor('166534'), fontSize: 13 },
   doneClose: { marginTop: 10, alignSelf: 'flex-start' },
-  doneCloseText: { color: '#16a34a', fontWeight: '600' },
-  label: { fontSize: 12, fontWeight: '600', color: '#374151', marginBottom: 4, marginTop: 8 },
-  input: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, color: '#111827' },
+  doneCloseText: { color: designColor('16a34a'), fontWeight: '600' },
+  label: { fontSize: 12, fontWeight: '600', color: designColor('374151'), marginBottom: 4, marginTop: 8 },
+  input: { borderWidth: 1, borderColor: designColor('d1d5db'), borderRadius: 6, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, color: designColor('111827') },
   couponRow: { flexDirection: 'row', alignItems: 'stretch' },
-  couponApplyBtn: { backgroundColor: '#16a34a', paddingHorizontal: 14, justifyContent: 'center', borderRadius: 6 },
-  couponApplyText: { color: '#fff', fontWeight: '600' },
-  couponClearBtn: { backgroundColor: '#f3f4f6', paddingHorizontal: 14, justifyContent: 'center', borderRadius: 6 },
-  couponClearText: { color: '#374151', fontWeight: '500' },
+  couponApplyBtn: { backgroundColor: designColor('16a34a'), paddingHorizontal: 14, justifyContent: 'center', borderRadius: 6 },
+  couponApplyText: { color: designColor('fff'), fontWeight: '600' },
+  couponClearBtn: { backgroundColor: designColor('f3f4f6'), paddingHorizontal: 14, justifyContent: 'center', borderRadius: 6 },
+  couponClearText: { color: designColor('374151'), fontWeight: '500' },
   couponMsg: { marginTop: 6, fontSize: 12 },
-  couponMsgOk: { color: '#15803d' },
-  couponMsgErr: { color: '#b91c1c' },
-  totalsBox: { marginTop: 16, padding: 12, backgroundColor: '#f9fafb', borderRadius: 8, borderColor: '#e5e7eb', borderWidth: 1 },
+  couponMsgOk: { color: designColor('15803d') },
+  couponMsgErr: { color: designColor('b91c1c') },
+  totalsBox: { marginTop: 16, padding: 12, backgroundColor: designColor('f9fafb'), borderRadius: 8, borderColor: designColor('e5e7eb'), borderWidth: 1 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  totalLabel: { color: '#374151', fontSize: 13 },
-  totalValue: { color: '#111827', fontSize: 13 },
-  totalRowFinal: { borderTopWidth: 1, borderTopColor: '#e5e7eb', marginTop: 6, paddingTop: 8 },
-  totalLabelFinal: { color: '#111827', fontWeight: '700', fontSize: 14 },
-  totalValueFinal: { color: '#111827', fontWeight: '700', fontSize: 16 },
-  errorBox: { marginTop: 12, backgroundColor: '#fef2f2', borderColor: '#fecaca', borderWidth: 1, borderRadius: 6, padding: 10 },
-  errorText: { color: '#991b1b', fontSize: 12 },
+  totalLabel: { color: designColor('374151'), fontSize: 13 },
+  totalValue: { color: designColor('111827'), fontSize: 13 },
+  totalRowFinal: { borderTopWidth: 1, borderTopColor: designColor('e5e7eb'), marginTop: 6, paddingTop: 8 },
+  totalLabelFinal: { color: designColor('111827'), fontWeight: '700', fontSize: 14 },
+  totalValueFinal: { color: designColor('111827'), fontWeight: '700', fontSize: 16 },
+  errorBox: { marginTop: 12, backgroundColor: designColor('fef2f2'), borderColor: designColor('fecaca'), borderWidth: 1, borderRadius: 6, padding: 10 },
+  errorText: { color: designColor('991b1b'), fontSize: 12 },
   payingBox: { alignItems: 'center', paddingVertical: 14 },
-  payingText: { color: '#6b7280', fontSize: 12, marginTop: 6 },
+  payingText: { color: designColor('6b7280'), fontSize: 12, marginTop: 6 },
   ctaRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 },
   cancelBtn: { paddingVertical: 10, paddingHorizontal: 14, marginRight: 6 },
-  cancelBtnText: { color: '#374151', fontWeight: '500' },
-  payBtn: { backgroundColor: '#16a34a', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 6 },
-  payBtnText: { color: '#ffffff', fontWeight: '600' },
+  cancelBtnText: { color: designColor('374151'), fontWeight: '500' },
+  payBtn: { backgroundColor: designColor('16a34a'), paddingVertical: 10, paddingHorizontal: 16, borderRadius: 6 },
+  payBtnText: { color: designColor('ffffff'), fontWeight: '600' },
 });

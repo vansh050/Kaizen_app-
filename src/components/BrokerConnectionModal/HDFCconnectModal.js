@@ -2,13 +2,15 @@ import React, { useState, useRef, useEffect } from 'react';
 
 import server from '../../utils/serverConfig';
 import CryptoJS from 'react-native-crypto-js';
+import { getAuth } from '@react-native-firebase/auth';
 import Config from 'react-native-config';
 import { generateToken } from '../../utils/SecurityTokenManager';
 
 import axios from 'axios';
 import HDFCConnectUI from '../../UIComponents/BrokerConnectionUI/HDFCConnectUI';
+import BrokerConnectStepperSheet from './BrokerConnectStepperSheet';
 import { useTrade } from '../../screens/TradeContext';
-import { getAdvisorSubdomain } from '../../utils/variantHelper';
+import {getAdvisorSubdomain, getTenantSubdomain} from '../../utils/variantHelper';
 import eventEmitter from '../EventEmitter';
 import useModalStore from '../../GlobalUIModals/modalStore';
 import {
@@ -17,6 +19,8 @@ import {
   sdkDualWriteSafely,
 } from '../../sdk/brokerSdkBridge';
 import {getAccountEmail} from '../../utils/accountEmail';
+
+import { designColor } from '../../design/literalTokens';
 
 const HDFCconnectModal = ({
   isVisible,
@@ -34,6 +38,8 @@ const HDFCconnectModal = ({
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [showWebView, setShowWebView] = useState(false);
   const [authUrl, setAuthUrl] = useState('');
+  const auth = getAuth();
+  const user = auth.currentUser;
   const userEmail = getAccountEmail();
   const [isPasswordVisibleup, setIsPasswordVisibleup] = useState(false);
   const sheet = useRef(null);
@@ -80,7 +86,7 @@ const HDFCconnectModal = ({
       .get(`${server.server.baseUrl}api/user/getUser/${userEmail}`, {
         headers: {
           'Content-Type': 'application/json',
-          'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || getAdvisorSubdomain(),
+          'X-Advisor-Subdomain': getTenantSubdomain(configData),
           'aq-encrypted-key': generateToken(
             Config.REACT_APP_AQ_KEYS,
             Config.REACT_APP_AQ_SECRET,
@@ -137,7 +143,7 @@ const HDFCconnectModal = ({
         url: `${server.ccxtServer.baseUrl}hdfc/access-token`,
         headers: {
           'Content-Type': 'application/json',
-          'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || getAdvisorSubdomain(),
+          'X-Advisor-Subdomain': getTenantSubdomain(configData),
           'aq-encrypted-key': generateToken(
             Config.REACT_APP_AQ_KEYS,
             Config.REACT_APP_AQ_SECRET,
@@ -184,7 +190,7 @@ const HDFCconnectModal = ({
         url: `${server.server.baseUrl}api/user/connect-broker`,
         headers: {
           'Content-Type': 'application/json',
-          'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || getAdvisorSubdomain(),
+          'X-Advisor-Subdomain': getTenantSubdomain(configData),
           'aq-encrypted-key': generateToken(
             Config.REACT_APP_AQ_KEYS,
             Config.REACT_APP_AQ_SECRET,
@@ -215,7 +221,7 @@ const HDFCconnectModal = ({
               data: JSON.stringify({ user_email: userEmail, user_broker: 'Hdfc Securities' }),
               headers: {
                 'Content-Type': 'application/json',
-                'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || getAdvisorSubdomain(),
+                'X-Advisor-Subdomain': getTenantSubdomain(configData),
                 'aq-encrypted-key': generateToken(Config.REACT_APP_AQ_KEYS, Config.REACT_APP_AQ_SECRET),
               },
             });
@@ -314,7 +320,7 @@ const HDFCconnectModal = ({
 
       headers: {
         'Content-Type': 'application/json',
-        'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || getAdvisorSubdomain(),
+        'X-Advisor-Subdomain': getTenantSubdomain(configData),
         'aq-encrypted-key': generateToken(
           Config.REACT_APP_AQ_KEYS,
           Config.REACT_APP_AQ_SECRET,
@@ -336,8 +342,12 @@ const HDFCconnectModal = ({
       });
   };
 
-  return (
-    <HDFCConnectUI
+  // OAuth phase keeps the existing HDFCConnectUI WebView flow untouched;
+  // credential phase renders the shared web-parity stepper (mirrors web
+  // connectBroker.js "Hdfc Securities" config). NEVER RN <Modal> here.
+  if (showWebView) {
+    return (
+      <HDFCConnectUI
       isVisible={isVisible}
       onClose={onClose}
       handleClose={onClose}
@@ -366,6 +376,61 @@ const HDFCconnectModal = ({
       unmetAck={unmetAck}
       setUnmetAck={setUnmetAck}
       configData={configData}
+    />
+    );
+  }
+
+  return (
+    <BrokerConnectStepperSheet
+      isVisible={!!isVisible}
+      onClose={onClose}
+      broker="HDFC Securities"
+      config={{
+        monogram: 'H',
+        brandFrom: designColor('e4002b'),
+        brandTo: designColor('8e0019'),
+        portalUrl: 'https://developer.hdfcsky.com/',
+        portalLabel: 'Open HDFC developer portal',
+        redirectUrl:
+          configData?.config?.REACT_APP_BROKER_CONNECT_REDIRECT_URL || '',
+        walkthroughVideoId: 'gNp76J0i45A',
+        guideSteps: [
+          'Open <b>developer.hdfcsky.com</b>',
+          'Log in with your <b>Client ID</b>, password and OTP',
+          'Accept the <b>Risk Disclosure</b>',
+          `Click <b>Create</b>, name it <b>${Config.REACT_APP_WHITE_LABEL_TEXT || 'AlphaQuark'}</b>, set the Redirect URL below`,
+          'Paste your <b>IP</b> into <b>Allowed IPs</b>, then Create',
+          'Copy the <b>API key</b> and <b>Secret key</b>',
+        ],
+      }}
+      egressBrokerKey="hdfcsec"
+      customerId={userId}
+      customerEmail={userEmail}
+      egressReady={egressReady}
+      setEgressReady={setEgressReady}
+      unmetAck={unmetAck}
+      setUnmetAck={setUnmetAck}
+      fields={[
+        {
+          label: 'API Key',
+          value: apiKey,
+          onChange: (t) => setApiKey(t.trim()),
+          password: true,
+          placeholder: 'Paste your HDFC API key',
+        },
+        {
+          label: 'Secret Key',
+          value: secretKey,
+          onChange: (t) => setSecretKey(t.trim()),
+          password: true,
+          placeholder: 'Paste your HDFC secret key',
+        },
+      ]}
+      phase="creds"
+      canSubmit={Boolean(apiKey) && Boolean(secretKey)}
+      submitLabel="Connect HDFC Securities"
+      loading={loading}
+      onSubmit={initiateAuth}
     />
   );
 };

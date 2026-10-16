@@ -50,7 +50,6 @@ import {
     Image,
     ScrollView,
     Dimensions,
-    FlatList,
     SafeAreaView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -62,16 +61,6 @@ import {
     FileText,
 } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import PieChart from 'react-native-pie-chart';
-import EmptyMP from '../../../src/assets/emptyModelPortfolio.svg';
-import PaymentSuccessModal from '../../../src/components/ModelPortfolioComponents/PaymentSuccessModal';
-import UserStrategySubscribeModal from '../../../src/components/ModelPortfolioComponents/UserStrategySubscribeModal';
-import MPInvestNowModal from '../../../src/components/ModelPortfolioComponents/MPInvestNowModal';
-import MPReviewTradeModal from '../../../src/components/ModelPortfolioComponents/MPReviewTradeModal';
-import RecommendationSuccessModal from '../../../src/components/ModelPortfolioComponents/RecommendationSuccessModal';
-import RebalanceTimeLineModal from '../../../src/components/ModelPortfolioComponents/RebalanceTimelineModal';
-import CustomTabBarMPPerformance from '../../../src/screens/Drawer/CustomTabbarMPPerformance';
-import ConsentPopup from '../../../src/components/ModelPortfolioComponents/ConsentPopUp';
 import { withGst, gstLabel } from '../../../src/utils/gstHelpers';
 import { resolveImageUrl } from '../../../src/utils/resolveImageUrl';
 
@@ -80,93 +69,21 @@ const Alpha100 = require('../../../src/assets/alpha-100.png');
 const defaultScreenWidth = Dimensions.get('window').width;
 const defaultScreenHeight = Dimensions.get('window').height;
 
-/* ---------- Distribution sub-component (purely visual + local modal state) ---------- */
-const Distribution = ({
-    latestRebalance,
-    colorMap,
-    chartData,
-    strategyDetails,
-}) => {
-    const [showRebalanceTimelineModal, setShowRebalanceTimelineModal] = useState(false);
-
-    const seriesData = chartData.map(entry => Number(entry.value));
-
-    if (seriesData.length === 0) {
-        return (
-            <View style={styles.emptyContainer}>
-                <EmptyMP />
-                <Text style={styles.noDataText}>No Data Found</Text>
-                <Text style={styles.noDataSubtitle}>
-                    Explore our curated Model Portfolios and start investing today!
-                </Text>
-            </View>
-        );
-    }
-
-    return (
-        <View style={{ flex: 1, paddingHorizontal: 10 }}>
-            <View style={{ marginTop: 20, marginHorizontal: 10 }}>
-                <Text style={{ color: 'grey', fontFamily: 'Satoshi-Regular' }}>
-                    Click to view the{' '}
-                    <Text
-                        onPress={() => setShowRebalanceTimelineModal(true)}
-                        style={{ color: '#3B82F6' }}>
-                        latest rebalance updates{' '}
-                    </Text>
-                    and history.
-                </Text>
-            </View>
-
-            <View style={{ marginTop: 30, marginHorizontal: 10 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ color: 'black', fontFamily: 'Satoshi-Regular', fontSize: 14 }}>
-                        Equity
-                    </Text>
-                    <Text style={{ color: 'black', fontFamily: 'Satoshi-Regular', fontSize: 14 }}>
-                        Weightage (%)
-                    </Text>
-                </View>
-
-                <FlatList
-                    data={latestRebalance?.adviceEntries}
-                    renderItem={({ item }) => (
-                        <View style={[styles.equityItem, { borderLeftColor: colorMap[item.symbol] }]}>
-                            <Text style={{ color: 'black', fontFamily: 'Satoshi-Regular', fontSize: 16, marginLeft: 10 }}>
-                                {item.symbol}
-                            </Text>
-                            <Text style={{ color: 'black', fontFamily: 'Satoshi-Regular', marginRight: 10 }}>
-                                {(item.value * 100).toFixed(2)}
-                            </Text>
-                        </View>
-                    )}
-                    keyExtractor={(item, index) => index.toString()}
-                />
-            </View>
-
-            <View style={{ alignSelf: 'center', justifyContent: 'center', marginVertical: 10 }}>
-                <PieChart
-                    widthAndHeight={250}
-                    series={seriesData}
-                    sliceColor={chartData.map(entry => entry.fill)}
-                    coverRadius={0.01}
-                    coverFill={'#FFF'}
-                />
-            </View>
-            {showRebalanceTimelineModal && (
-                <RebalanceTimeLineModal
-                    closeRebalanceTimelineModal={() => setShowRebalanceTimelineModal(false)}
-                    strategyDetails={strategyDetails}
-                />
-            )}
-        </View>
-    );
-};
-
-/* ---------- Main Presentation ---------- */
-const BespokePerformanceScreen = ({ viewModel, actions }) => {
+// Single source of the presentation's prop defaults, shared by the screen
+// and BespokePerformanceModals (variants reuse the modal block so payment,
+// order and subscribe flows are wired exactly once).
+export const resolveBespokeProps = (viewModel, actions, slots) => {
     const vm = viewModel || {};
     const act = actions || {};
-    const insets = useSafeAreaInsets();
+    const {
+        PaymentSuccessModal,
+        UserStrategySubscribeModal,
+        MPInvestNowModal,
+        MPReviewTradeModal,
+        RecommendationSuccessModal,
+        CustomTabBarMPPerformance,
+        ConsentPopup,
+    } = slots || {};
 
     const {
         modelName = '',
@@ -212,6 +129,9 @@ const BespokePerformanceScreen = ({ viewModel, actions }) => {
         configGst = false,
         configGstWithText = false,
         serverBaseUrl = '',
+        gradient1 = '#002651',
+        gradient2 = '#0076fb',
+        mainColor = '#0056B7',
     } = vm;
 
     const {
@@ -243,276 +163,183 @@ const BespokePerformanceScreen = ({ viewModel, actions }) => {
         getSingleStrategyDetails = () => {},
         onHandleTabLayout = () => () => {},
     } = act;
+    return {
+        vm,
+        act,
+        PaymentSuccessModal,
+        UserStrategySubscribeModal,
+        MPInvestNowModal,
+        MPReviewTradeModal,
+        RecommendationSuccessModal,
+        CustomTabBarMPPerformance,
+        ConsentPopup,
+        modelName,
+        config,
+        strategyDetails,
+        latestRebalance,
+        planDetails,
+        specificPlan,
+        userEmail,
+        broker,
+        userDetails,
+        subscribed,
+        subscriptionStatus,
+        isActive,
+        pricingOptions,
+        selectedPricing,
+        currentPrice,
+        originalPrice,
+        discount,
+        tabIndex,
+        routes,
+        screenWidth,
+        screenHeight,
+        chartData,
+        colorMap,
+        confirmOrder,
+        calculatedPortfolioData,
+        calculatedLoading,
+        dataArray,
+        paymentModal,
+        paymentSuccess,
+        openStrategy,
+        openSuccessModal,
+        OpenSubscribeModel,
+        orderPlacementResponse,
+        lastSubmittedTrades,
+        selectedCard,
+        isConsentPopupOpen,
+        clientCode,
+        apiKey,
+        secretKey,
+        jwtToken,
+        configGst,
+        configGstWithText,
+        serverBaseUrl,
+        gradient1,
+        gradient2,
+        mainColor,
+        onGoBack,
+        onOpenResearchReports,
+        onTabIndexChange,
+        onSelectedPricingChange,
+        onInvestNow,
+        onCloseInvestNowModal,
+        onCloseReviewTrade,
+        onConsentAccept,
+        onSetConfirmOrder,
+        onSetPaymentSuccess,
+        onSetPaymentModal,
+        onSetSelectedCard,
+        onSetOpenSubscribeModel,
+        onSetOpenSucessModal,
+        onSetOrderPlacementResponse,
+        onSetLastSubmittedTrades,
+        onSetOpenTokenExpireModel,
+        onSetBrokerModel,
+        onSetSelectedPlanType,
+        onSetOneTimeAmount,
+        onSetOneTimeDurationPlan,
+        onSetIsConsentPopupOpen,
+        onSetShowPaymentFail,
+        onCalculateRebalance,
+        getAllStrategy,
+        getSingleStrategyDetails,
+        onHandleTabLayout,
+    };
+};
 
+// Payment / order / subscribe modals of the bespoke detail screen. Exported so
+// a variant presentation renders the exact same money-path wiring.
+export const BespokePerformanceModals = ({ viewModel, actions, slots }) => {
+    const {
+        vm,
+        act,
+        PaymentSuccessModal,
+        UserStrategySubscribeModal,
+        MPInvestNowModal,
+        MPReviewTradeModal,
+        RecommendationSuccessModal,
+        CustomTabBarMPPerformance,
+        ConsentPopup,
+        modelName,
+        config,
+        strategyDetails,
+        latestRebalance,
+        specificPlan,
+        userEmail,
+        broker,
+        userDetails,
+        subscribed,
+        subscriptionStatus,
+        isActive,
+        pricingOptions,
+        selectedPricing,
+        currentPrice,
+        originalPrice,
+        discount,
+        tabIndex,
+        routes,
+        screenWidth,
+        screenHeight,
+        chartData,
+        colorMap,
+        confirmOrder,
+        calculatedPortfolioData,
+        calculatedLoading,
+        dataArray,
+        paymentModal,
+        paymentSuccess,
+        openStrategy,
+        openSuccessModal,
+        OpenSubscribeModel,
+        orderPlacementResponse,
+        lastSubmittedTrades,
+        selectedCard,
+        isConsentPopupOpen,
+        clientCode,
+        apiKey,
+        secretKey,
+        jwtToken,
+        configGst,
+        configGstWithText,
+        serverBaseUrl,
+        gradient1,
+        gradient2,
+        mainColor,
+        onGoBack,
+        onOpenResearchReports,
+        onTabIndexChange,
+        onSelectedPricingChange,
+        onInvestNow,
+        onCloseInvestNowModal,
+        onCloseReviewTrade,
+        onConsentAccept,
+        onSetConfirmOrder,
+        onSetPaymentSuccess,
+        onSetPaymentModal,
+        onSetSelectedCard,
+        onSetOpenSubscribeModel,
+        onSetOpenSucessModal,
+        onSetOrderPlacementResponse,
+        onSetLastSubmittedTrades,
+        onSetOpenTokenExpireModel,
+        onSetBrokerModel,
+        onSetSelectedPlanType,
+        onSetOneTimeAmount,
+        onSetOneTimeDurationPlan,
+        onSetIsConsentPopupOpen,
+        onSetShowPaymentFail,
+        onCalculateRebalance,
+        getAllStrategy,
+        getSingleStrategyDetails,
+        onHandleTabLayout,
+    } = resolveBespokeProps(viewModel, actions, slots);
+    // The detail fetch can fail or still be in flight; the catalogue plan is
+    // the same Plan document, so the modals never receive a null plan.
+    const planDetails = vm.planDetails || specificPlan || null;
     return (
-        <SafeAreaView style={styles.container}>
-            <ScrollView contentContainerStyle={{ lex: 1 }}>
-                <View style={{ flexDirection: 'column' }}>
-                    <View>
-                        <View>
-                            <View style={styles.container}>
-                                <TouchableOpacity activeOpacity={1}>
-                                    <LinearGradient
-                                        colors={['#002651', '#0076fb']}
-                                        start={{ x: 0, y: 1 }}
-                                        end={{ x: 1, y: 1 }}
-                                        style={[styles.cardContainer, { width: screenWidth, maxWidth: screenWidth }]}>
-                                        <View style={{ flexDirection: 'row', alignContent: 'center', alignItems: 'center', marginBottom: 20 }}>
-                                            <TouchableOpacity style={styles.backButton}>
-                                                <ChevronLeft size={24} color="#000" onPress={onGoBack} />
-                                            </TouchableOpacity>
-                                            <View style={styles.header}>
-                                                <Text style={styles.title}>{config?.bespokePlanLabel || 'Bespoke Plans'}</Text>
-                                            </View>
-                                            {isActive && (
-                                                <TouchableOpacity
-                                                    onPress={onOpenResearchReports}
-                                                    activeOpacity={0.7}
-                                                    style={{
-                                                        marginLeft: 'auto',
-                                                        flexDirection: 'row',
-                                                        alignItems: 'center',
-                                                        backgroundColor: 'rgba(255,255,255,0.15)',
-                                                        paddingHorizontal: 10,
-                                                        paddingVertical: 6,
-                                                        borderRadius: 8,
-                                                    }}>
-                                                    <FileText size={16} color="#fff" />
-                                                    <Text style={{ marginLeft: 6, color: '#fff', fontWeight: '600', fontSize: 12 }}>
-                                                        Reports
-                                                    </Text>
-                                                </TouchableOpacity>
-                                            )}
-                                        </View>
-                                        {/* Header */}
-                                        <View style={styles.headerSection}>
-                                            <View style={styles.logoContainer}>
-                                                <Image
-                                                    source={
-                                                        strategyDetails?.image
-                                                            ? { uri: resolveImageUrl(strategyDetails?.image, serverBaseUrl) }
-                                                            : Alpha100
-                                                    }
-                                                    style={styles.icon}
-                                                />
-                                            </View>
-                                            <Text style={styles.portfolioTitle}>
-                                                {modelName || 'ZC Leaders Portfolio'}
-                                            </Text>
-                                        </View>
-
-                                        {/* Price Section */}
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 0 }}>
-                                            <View style={styles.priceSection}>
-                                                <Text style={styles.currentPrice}>
-                                                    {'₹ '}{currentPrice ? (configGst && configGstWithText ? withGst(currentPrice)?.toFixed(2) : currentPrice?.toFixed(2)) : 0}{gstLabel(configGst, configGstWithText)}
-                                                </Text>
-                                                {discount > 0 && (
-                                                    <Text style={styles.originalPrice}>
-                                                        {'₹ '}{originalPrice?.toFixed(2)}
-                                                    </Text>
-                                                )}
-                                            </View>
-                                            {discount > 0 && (
-                                                <LinearGradient
-                                                    colors={['#58a100', '#1f7d00']}
-                                                    start={{ x: 0, y: 0 }}
-                                                    end={{ x: 1, y: 0 }}
-                                                    style={styles.saveTag}>
-                                                    <Text style={styles.saveTagText}>
-                                                        Save {discount}%
-                                                    </Text>
-                                                </LinearGradient>
-                                            )}
-                                        </View>
-
-                                        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-                                            {pricingOptions.map(option => {
-                                                const isSelected = option.period === selectedPricing;
-                                                return (
-                                                    <TouchableOpacity
-                                                        key={option.period}
-                                                        onPress={() => onSelectedPricingChange(option.period)}
-                                                        style={{
-                                                            paddingVertical: 2,
-                                                            paddingHorizontal: 14,
-                                                            borderRadius: 999,
-                                                            backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.3)' : 'transparent',
-                                                            borderWidth: isSelected ? 0 : 1,
-                                                            borderColor: isSelected ? 'transparent' : 'rgba(255, 255, 255, 0.6)',
-                                                            marginRight: 8,
-                                                            marginBottom: 8,
-                                                            shadowColor: isSelected ? '#000' : 'transparent',
-                                                            shadowOffset: { width: 0, height: 2 },
-                                                            shadowOpacity: isSelected ? 0.2 : 0,
-                                                            shadowRadius: isSelected ? 2 : 0,
-                                                            elevation: isSelected ? 2 : 0,
-                                                        }}>
-                                                        <Text style={{ color: '#fff', fontSize: 10, marginTop: 2, fontFamily: 'Poppins-Medium' }}>
-                                                            {option.label}
-                                                        </Text>
-                                                    </TouchableOpacity>
-                                                );
-                                            })}
-                                        </View>
-                                    </LinearGradient>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    </View>
-                    <ConsentPopup
-                        isConsentPopupOpen={isConsentPopupOpen}
-                        setIsConsentPopupOpen={onSetIsConsentPopupOpen}
-                        handleConsentAccept={onConsentAccept}
-                    />
-
-                    <View style={[styles.tabViewContainer, { height: screenHeight, width: screenWidth }]}>
-                        <TabView
-                            navigationState={{ index: tabIndex, routes }}
-                            renderScene={SceneMap({
-                                keyfeatures: () => (
-                                    <ScrollView
-                                        nestedScrollEnabled
-                                        showsVerticalScrollIndicator={false}
-                                        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}>
-                                        <Text style={{ fontSize: 20, fontWeight: '700', color: '#002651', marginBottom: 12 }}>
-                                            Key Features
-                                        </Text>
-
-                                        {strategyDetails?.keyFeature?.length > 0 ? (
-                                            strategyDetails.keyFeature.map((feature, idx) => (
-                                                <View
-                                                    key={idx}
-                                                    style={{
-                                                        backgroundColor: '#FFFFFF',
-                                                        borderRadius: 14,
-                                                        padding: 16,
-                                                        marginBottom: 12,
-                                                        borderWidth: 1,
-                                                        borderColor: '#E2E8F0',
-                                                        shadowColor: '#000',
-                                                        shadowOpacity: 0.05,
-                                                        shadowRadius: 4,
-                                                        shadowOffset: { width: 0, height: 2 },
-                                                        elevation: 2,
-                                                        flexDirection: 'row',
-                                                        alignItems: 'flex-start',
-                                                    }}>
-                                                    <View style={{ backgroundColor: '#E8F0FF', borderRadius: 50, padding: 8, marginRight: 10 }}>
-                                                        <Star size={18} color="#0076FB" />
-                                                    </View>
-                                                    <View style={{ flex: 1 }}>
-                                                        <Text style={{ fontSize: 16, fontWeight: '600', color: '#002651', marginBottom: 4 }}>
-                                                            {feature.label}
-                                                        </Text>
-                                                        <Text style={{ fontSize: 14, color: '#475569', lineHeight: 20 }}>
-                                                            {feature.description}
-                                                        </Text>
-                                                    </View>
-                                                </View>
-                                            ))
-                                        ) : (
-                                            <Text style={{ textAlign: 'center', color: '#94A3B8', marginTop: 8, fontSize: 14 }}>
-                                                No key features available.
-                                            </Text>
-                                        )}
-
-                                        <View style={{ height: 1, backgroundColor: '#E5E7EB', marginVertical: 20 }} />
-
-                                        <Text style={{ fontSize: 20, fontWeight: '700', color: '#002651', marginBottom: 12 }}>
-                                            Key Benefits
-                                        </Text>
-
-                                        {strategyDetails?.keyBenefit ? (
-                                            strategyDetails.keyBenefit
-                                                .split('\n')
-                                                .filter(line => line.trim() !== '')
-                                                .map((benefit, idx) => (
-                                                    <View
-                                                        key={idx}
-                                                        style={{
-                                                            flexDirection: 'row',
-                                                            alignItems: 'flex-start',
-                                                            marginBottom: 10,
-                                                            backgroundColor: '#F8FAFC',
-                                                            padding: 10,
-                                                            borderRadius: 10,
-                                                            borderWidth: 1,
-                                                            borderColor: '#E2E8F0',
-                                                        }}>
-                                                        <CheckCircle size={18} color="#0076FB" style={{ marginRight: 10, marginTop: 2 }} />
-                                                        <Text style={{ fontSize: 14, color: '#334155', flex: 1, lineHeight: 20 }}>
-                                                            {benefit}
-                                                        </Text>
-                                                    </View>
-                                                ))
-                                        ) : (
-                                            <Text style={{ textAlign: 'center', color: '#94A3B8', marginTop: 8, fontSize: 14 }}>
-                                                No key benefits available.
-                                            </Text>
-                                        )}
-                                    </ScrollView>
-                                ),
-
-                                overview: () => (
-                                    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-                                        <ScrollView
-                                            nestedScrollEnabled
-                                            showsVerticalScrollIndicator={false}
-                                            contentContainerStyle={{ alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: 0, paddingBottom: 0 }}>
-                                            <View style={{ backgroundColor: '#EEF4FF', borderRadius: 16, borderWidth: 1, borderColor: '#C7D2FE', padding: 20, marginTop: 20 }}>
-                                                <Text style={{ fontSize: 18, fontWeight: '600', color: '#1E293B', marginBottom: 8 }}>
-                                                    Subscribe & Get Expert Research Guidance
-                                                </Text>
-                                                <Text style={{ fontSize: 14, color: '#475569', marginBottom: 16, lineHeight: 20 }}>
-                                                    Start by subscribing to our{' '}
-                                                    <Text style={{ fontWeight: '600', color: '#1F54DB' }}>Research Investment Plan</Text>
-                                                    . Once subscribed, you'll receive personalized{' '}
-                                                    <Text style={{ fontWeight: '600' }}>buy/sell recommendations</Text>{' '}
-                                                    directly from our certified RA/RIA professionals —
-                                                    tailored to your goals and market opportunities. Our
-                                                    experts will work with you to build and refine a
-                                                    portfolio that aligns perfectly with your financial
-                                                    objectives and risk profile.
-                                                </Text>
-                                            </View>
-                                        </ScrollView>
-                                    </SafeAreaView>
-                                ),
-                            })}
-                            onIndexChange={onTabIndexChange}
-                            initialLayout={{ width: screenWidth }}
-                            onLayout={onHandleTabLayout(2)}
-                            renderTabBar={props => (
-                                <CustomTabBarMPPerformance isSubscriptionActive={false} {...props} />
-                            )}
-                        />
-                    </View>
-                </View>
-            </ScrollView>
-
-            <View style={{ alignContent: 'center', alignItems: 'center', alignSelf: 'center', elevation: 20, shadowColor: 'grey', paddingBottom: Math.max(insets.bottom, 8) }}>
-                {subscribed === true ? (
-                    <TouchableOpacity disabled={subscribed} style={[styles.investButtondisable, { width: screenWidth * 0.9 }]}>
-                        <Text style={styles.investButtonTextdisable}>Subscribed</Text>
-                    </TouchableOpacity>
-                ) : (
-                    <View style={{ flexDirection: 'row', alignContent: 'center', alignItems: 'center', alignSelf: 'center' }}>
-                        <TouchableOpacity onPress={onInvestNow} style={styles.investButton}>
-                            <Text style={styles.investButtonText}>
-                                {subscriptionStatus === 'active'
-                                    ? 'Subscribed'
-                                    : subscriptionStatus === 'renew'
-                                    ? 'Renew now'
-                                    : subscriptionStatus === 'expired'
-                                    ? 'Resubscribe'
-                                    : 'Invest now'}
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                )}
-            </View>
-
+        <>
             {paymentModal && (
                 <MPInvestNowModal
                     visible={paymentModal}
@@ -613,6 +440,462 @@ const BespokePerformanceScreen = ({ viewModel, actions }) => {
                     setOpenTokenExpireModel={onSetOpenTokenExpireModel}
                 />
             ) : null}
+        </>
+    );
+};
+
+// Plan content normalised the way this screen renders it (key features as
+// [{label, description}], key benefits as text); bad admin shapes become empty.
+export const bespokePlanSections = (plan) => {
+    const rawFeatures = plan?.keyFeature;
+    const features = Array.isArray(rawFeatures)
+        ? rawFeatures.filter(f => f && (f.label || f.description))
+        : [];
+    const rawBenefits = plan?.keyBenefit;
+    const benefits = typeof rawBenefits === 'string'
+        ? rawBenefits
+        : Array.isArray(rawBenefits)
+            ? rawBenefits.join('\n')
+            : '';
+    return {
+        features,
+        benefits,
+        investmentManagement: (plan?.investmentManagement || '').trim(),
+        researchInvestment: (plan?.researchInvestment || '').trim(),
+    };
+};
+
+/* ---------- Main Presentation ---------- */
+const BespokePerformanceScreen = ({ viewModel, actions, slots }) => {
+    const {
+        vm,
+        act,
+        PaymentSuccessModal,
+        UserStrategySubscribeModal,
+        MPInvestNowModal,
+        MPReviewTradeModal,
+        RecommendationSuccessModal,
+        CustomTabBarMPPerformance,
+        ConsentPopup,
+        modelName,
+        config,
+        strategyDetails,
+        latestRebalance,
+        planDetails,
+        specificPlan,
+        userEmail,
+        broker,
+        userDetails,
+        subscribed,
+        subscriptionStatus,
+        isActive,
+        pricingOptions,
+        selectedPricing,
+        currentPrice,
+        originalPrice,
+        discount,
+        tabIndex,
+        routes,
+        screenWidth,
+        screenHeight,
+        chartData,
+        colorMap,
+        confirmOrder,
+        calculatedPortfolioData,
+        calculatedLoading,
+        dataArray,
+        paymentModal,
+        paymentSuccess,
+        openStrategy,
+        openSuccessModal,
+        OpenSubscribeModel,
+        orderPlacementResponse,
+        lastSubmittedTrades,
+        selectedCard,
+        isConsentPopupOpen,
+        clientCode,
+        apiKey,
+        secretKey,
+        jwtToken,
+        configGst,
+        configGstWithText,
+        serverBaseUrl,
+        gradient1,
+        gradient2,
+        mainColor,
+        onGoBack,
+        onOpenResearchReports,
+        onTabIndexChange,
+        onSelectedPricingChange,
+        onInvestNow,
+        onCloseInvestNowModal,
+        onCloseReviewTrade,
+        onConsentAccept,
+        onSetConfirmOrder,
+        onSetPaymentSuccess,
+        onSetPaymentModal,
+        onSetSelectedCard,
+        onSetOpenSubscribeModel,
+        onSetOpenSucessModal,
+        onSetOrderPlacementResponse,
+        onSetLastSubmittedTrades,
+        onSetOpenTokenExpireModel,
+        onSetBrokerModel,
+        onSetSelectedPlanType,
+        onSetOneTimeAmount,
+        onSetOneTimeDurationPlan,
+        onSetIsConsentPopupOpen,
+        onSetShowPaymentFail,
+        onCalculateRebalance,
+        getAllStrategy,
+        getSingleStrategyDetails,
+        onHandleTabLayout,
+    } = resolveBespokeProps(viewModel, actions, slots);
+    const insets = useSafeAreaInsets();
+
+    // The Plan selected from the catalogue is the authoritative presentation
+    // record. It is available synchronously and carries the current logo and
+    // admin-authored content. The model_portfolio strategy record is allowed
+    // only as a legacy fallback because it can be sparse or stale.
+    const planPresentation = specificPlan || planDetails || strategyDetails || {};
+
+    return (
+        <SafeAreaView style={styles.container}>
+            <ScrollView contentContainerStyle={{ lex: 1 }}>
+                <View style={{ flexDirection: 'column' }}>
+                    <View>
+                        <View>
+                            <View style={styles.container}>
+                                <TouchableOpacity activeOpacity={1}>
+                                    <LinearGradient
+                                        colors={[gradient1, gradient2]}
+                                        start={{ x: 0, y: 1 }}
+                                        end={{ x: 1, y: 1 }}
+                                        style={[styles.cardContainer, { width: screenWidth, maxWidth: screenWidth }]}>
+                                        <View style={{ flexDirection: 'row', alignContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+                                            <TouchableOpacity style={styles.backButton}>
+                                                <ChevronLeft size={24} color="#000" onPress={onGoBack} />
+                                            </TouchableOpacity>
+                                            <View style={styles.header}>
+                                                <Text style={styles.title}>{config?.bespokePlanLabel || 'Bespoke Plans'}</Text>
+                                            </View>
+                                            {isActive && (
+                                                <TouchableOpacity
+                                                    onPress={onOpenResearchReports}
+                                                    activeOpacity={0.7}
+                                                    style={{
+                                                        marginLeft: 'auto',
+                                                        flexDirection: 'row',
+                                                        alignItems: 'center',
+                                                        backgroundColor: 'rgba(255,255,255,0.15)',
+                                                        paddingHorizontal: 10,
+                                                        paddingVertical: 6,
+                                                        borderRadius: 8,
+                                                    }}>
+                                                    <FileText size={16} color="#fff" />
+                                                    <Text style={{ marginLeft: 6, color: '#fff', fontWeight: '600', fontSize: 12 }}>
+                                                        Reports
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+                                        {/* Header */}
+                                        <View style={styles.headerSection}>
+                                            <View style={styles.logoContainer}>
+                                                <Image
+                                                    source={
+                                                        planPresentation?.image
+                                                            ? { uri: resolveImageUrl(planPresentation.image, serverBaseUrl) }
+                                                            : Alpha100
+                                                    }
+                                                    style={styles.icon}
+                                                />
+                                            </View>
+                                            <Text style={styles.portfolioTitle}>
+                                                {modelName || 'ZC Leaders Portfolio'}
+                                            </Text>
+                                        </View>
+
+                                        {/* Price Section */}
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 0 }}>
+                                            <View style={styles.priceSection}>
+                                                <Text style={styles.currentPrice}>
+                                                    {'₹ '}{currentPrice ? (configGst && configGstWithText ? withGst(currentPrice)?.toFixed(2) : currentPrice?.toFixed(2)) : 0}{gstLabel(configGst, configGstWithText)}
+                                                </Text>
+                                                {discount > 0 && (
+                                                    <Text style={styles.originalPrice}>
+                                                        {'₹ '}{originalPrice?.toFixed(2)}
+                                                    </Text>
+                                                )}
+                                            </View>
+                                            {discount > 0 && (
+                                                <LinearGradient
+                                                    colors={['#58a100', '#1f7d00']}
+                                                    start={{ x: 0, y: 0 }}
+                                                    end={{ x: 1, y: 0 }}
+                                                    style={styles.saveTag}>
+                                                    <Text style={styles.saveTagText}>
+                                                        Save {discount}%
+                                                    </Text>
+                                                </LinearGradient>
+                                            )}
+                                        </View>
+
+                                        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                                            {pricingOptions.map(option => {
+                                                const isSelected = option.period === selectedPricing;
+                                                return (
+                                                    <TouchableOpacity
+                                                        key={option.period}
+                                                        onPress={() => onSelectedPricingChange(option.period)}
+                                                        style={{
+                                                            paddingVertical: 2,
+                                                            paddingHorizontal: 14,
+                                                            borderRadius: 999,
+                                                            backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.3)' : 'transparent',
+                                                            borderWidth: isSelected ? 0 : 1,
+                                                            borderColor: isSelected ? 'transparent' : 'rgba(255, 255, 255, 0.6)',
+                                                            marginRight: 8,
+                                                            marginBottom: 8,
+                                                            shadowColor: isSelected ? '#000' : 'transparent',
+                                                            shadowOffset: { width: 0, height: 2 },
+                                                            shadowOpacity: isSelected ? 0.2 : 0,
+                                                            shadowRadius: isSelected ? 2 : 0,
+                                                            elevation: isSelected ? 2 : 0,
+                                                        }}>
+                                                        <Text style={{ color: '#fff', fontSize: 10, marginTop: 2, fontFamily: 'Poppins-Medium' }}>
+                                                            {option.label}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                );
+                                            })}
+                                        </View>
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+                    <ConsentPopup
+                        isConsentPopupOpen={isConsentPopupOpen}
+                        setIsConsentPopupOpen={onSetIsConsentPopupOpen}
+                        handleConsentAccept={onConsentAccept}
+                    />
+
+                    <View style={[styles.tabViewContainer, { height: screenHeight, width: screenWidth }]}>
+                        <TabView
+                            navigationState={{ index: tabIndex, routes }}
+                            renderScene={SceneMap({
+                                keyfeatures: () => {
+                                    // UPDATE 4 (2026-07-24, revised 2): read from
+                                    // `specificPlan` (available synchronously from
+                                    // navigation params) first, then `planDetails` (the
+                                    // async detail-endpoint response), then
+                                    // `strategyDetails` as last-resort fallback. The plan
+                                    // LIST endpoint that populates specificPlan already
+                                    // returns the FULL Plan doc including keyFeature /
+                                    // keyBenefit / investmentManagement / researchInvestment
+                                    // (verified in aq_backend_github/Routes/Admin/Plans/
+                                    // PlanRouter.js — the aggregation only $projects OUT
+                                    // internal helper fields), so this data is available
+                                    // on mount with zero async wait. Reading from
+                                    // strategyDetails alone was broken because two
+                                    // endpoints race to write it and the model-portfolio
+                                    // one (which has none of these fields) usually wins.
+                                    // Also normalize bad shapes so we don't crash on
+                                    // string-instead-of-array or array-instead-of-string
+                                    // admin data.
+                                    const planDoc = planPresentation;
+                                    const rawFeatures = planDoc?.keyFeature;
+                                    const featureList = Array.isArray(rawFeatures)
+                                        ? rawFeatures.filter(f => f && (f.label || f.description))
+                                        : [];
+                                    const rawBenefits = planDoc?.keyBenefit;
+                                    const benefitText = typeof rawBenefits === 'string'
+                                        ? rawBenefits
+                                        : Array.isArray(rawBenefits)
+                                            ? rawBenefits.join('\n')
+                                            : '';
+                                    return (
+                                    <ScrollView
+                                        nestedScrollEnabled
+                                        showsVerticalScrollIndicator={false}
+                                        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}>
+                                        <Text style={{ fontSize: 20, fontWeight: '700', color: '#002651', marginBottom: 12 }}>
+                                            Key Features
+                                        </Text>
+
+                                        {featureList.length > 0 ? (
+                                            featureList.map((feature, idx) => (
+                                                <View
+                                                    key={idx}
+                                                    style={{
+                                                        backgroundColor: '#FFFFFF',
+                                                        borderRadius: 14,
+                                                        padding: 16,
+                                                        marginBottom: 12,
+                                                        borderWidth: 1,
+                                                        borderColor: '#E2E8F0',
+                                                        shadowColor: '#000',
+                                                        shadowOpacity: 0.05,
+                                                        shadowRadius: 4,
+                                                        shadowOffset: { width: 0, height: 2 },
+                                                        elevation: 2,
+                                                        flexDirection: 'row',
+                                                        alignItems: 'flex-start',
+                                                    }}>
+                                                    <View style={{ backgroundColor: '#E8F0FF', borderRadius: 50, padding: 8, marginRight: 10 }}>
+                                                        <Star size={18} color="#0076FB" />
+                                                    </View>
+                                                    <View style={{ flex: 1 }}>
+                                                        <Text style={{ fontSize: 16, fontWeight: '600', color: '#002651', marginBottom: 4 }}>
+                                                            {feature.label}
+                                                        </Text>
+                                                        <Text style={{ fontSize: 14, color: '#475569', lineHeight: 20 }}>
+                                                            {feature.description}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                            ))
+                                        ) : (
+                                            <Text style={{ textAlign: 'center', color: '#94A3B8', marginTop: 8, fontSize: 14 }}>
+                                                No key features available.
+                                            </Text>
+                                        )}
+
+                                        <View style={{ height: 1, backgroundColor: '#E5E7EB', marginVertical: 20 }} />
+
+                                        <Text style={{ fontSize: 20, fontWeight: '700', color: '#002651', marginBottom: 12 }}>
+                                            Key Benefits
+                                        </Text>
+
+                                        {benefitText ? (
+                                            benefitText
+                                                .split('\n')
+                                                .filter(line => line.trim() !== '')
+                                                .map((benefit, idx) => (
+                                                    <View
+                                                        key={idx}
+                                                        style={{
+                                                            flexDirection: 'row',
+                                                            alignItems: 'flex-start',
+                                                            marginBottom: 10,
+                                                            backgroundColor: '#F8FAFC',
+                                                            padding: 10,
+                                                            borderRadius: 10,
+                                                            borderWidth: 1,
+                                                            borderColor: '#E2E8F0',
+                                                        }}>
+                                                        <CheckCircle size={18} color="#0076FB" style={{ marginRight: 10, marginTop: 2 }} />
+                                                        <Text style={{ fontSize: 14, color: '#334155', flex: 1, lineHeight: 20 }}>
+                                                            {benefit}
+                                                        </Text>
+                                                    </View>
+                                                ))
+                                        ) : (
+                                            <Text style={{ textAlign: 'center', color: '#94A3B8', marginTop: 8, fontSize: 14 }}>
+                                                No key benefits available.
+                                            </Text>
+                                        )}
+                                    </ScrollView>
+                                    );
+                                },
+
+                                overview: () => {
+                                    // UPDATE 7 (2026-07-24, revised 2): same source-of-truth
+                                    // priority as the keyfeatures tab above - specificPlan
+                                    // (nav param, synchronous) first, planDetails second,
+                                    // strategyDetails last. See the keyfeatures comment for
+                                    // the race-condition root cause.
+                                    const planDoc = planPresentation;
+                                    const investmentMgmt = (planDoc?.investmentManagement || '').trim();
+                                    const researchInv = (planDoc?.researchInvestment || '').trim();
+                                    const hasAdminContent = investmentMgmt.length > 0 || researchInv.length > 0;
+                                    return (
+                                    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+                                        <ScrollView
+                                            nestedScrollEnabled
+                                            showsVerticalScrollIndicator={false}
+                                            contentContainerStyle={{ alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: 0, paddingBottom: 0 }}>
+                                            {hasAdminContent ? (
+                                                <View style={{ width: '100%', marginTop: 20 }}>
+                                                    {investmentMgmt.length > 0 && (
+                                                        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', padding: 16, marginBottom: 12 }}>
+                                                            <Text style={{ fontSize: 16, fontWeight: '700', color: mainColor, marginBottom: 6 }}>
+                                                                Investment Management
+                                                            </Text>
+                                                            <Text style={{ fontSize: 14, color: '#334155', lineHeight: 20 }}>
+                                                                {investmentMgmt}
+                                                            </Text>
+                                                        </View>
+                                                    )}
+                                                    {researchInv.length > 0 && (
+                                                        <View style={{ backgroundColor: '#F8FAFC', borderRadius: 14, borderWidth: 1, borderColor: '#E2E8F0', padding: 16 }}>
+                                                            <Text style={{ fontSize: 16, fontWeight: '700', color: mainColor, marginBottom: 6 }}>
+                                                                Research Investment
+                                                            </Text>
+                                                            <Text style={{ fontSize: 14, color: '#334155', lineHeight: 20 }}>
+                                                                {researchInv}
+                                                            </Text>
+                                                        </View>
+                                                    )}
+                                                </View>
+                                            ) : (
+                                                <View style={{ backgroundColor: '#EEF4FF', borderRadius: 16, borderWidth: 1, borderColor: '#C7D2FE', padding: 20, marginTop: 20 }}>
+                                                    <Text style={{ fontSize: 18, fontWeight: '600', color: '#1E293B', marginBottom: 8 }}>
+                                                        Subscribe & Get Expert Research Guidance
+                                                    </Text>
+                                                    <Text style={{ fontSize: 14, color: '#475569', marginBottom: 16, lineHeight: 20 }}>
+                                                        Start by subscribing to our{' '}
+                                                        <Text style={{ fontWeight: '600', color: '#1F54DB' }}>Research Investment Plan</Text>
+                                                        . Once subscribed, you'll receive personalized{' '}
+                                                        <Text style={{ fontWeight: '600' }}>buy/sell recommendations</Text>{' '}
+                                                        directly from our certified RA/RIA professionals —
+                                                        tailored to your goals and market opportunities. Our
+                                                        experts will work with you to build and refine a
+                                                        portfolio that aligns perfectly with your financial
+                                                        objectives and risk profile.
+                                                    </Text>
+                                                </View>
+                                            )}
+                                        </ScrollView>
+                                    </SafeAreaView>
+                                    );
+                                },
+                            })}
+                            onIndexChange={onTabIndexChange}
+                            initialLayout={{ width: screenWidth }}
+                            onLayout={onHandleTabLayout(2)}
+                            renderTabBar={props => (
+                                <CustomTabBarMPPerformance isSubscriptionActive={false} {...props} />
+                            )}
+                        />
+                    </View>
+                </View>
+            </ScrollView>
+
+            <View style={{ alignContent: 'center', alignItems: 'center', alignSelf: 'center', elevation: 20, shadowColor: 'grey', paddingBottom: Math.max(insets.bottom, 8) }}>
+                {subscribed === true ? (
+                    <TouchableOpacity disabled={subscribed} style={[styles.investButtondisable, { width: screenWidth * 0.9 }]}>
+                        <Text style={styles.investButtonTextdisable}>Subscribed</Text>
+                    </TouchableOpacity>
+                ) : (
+                    <View style={{ flexDirection: 'row', alignContent: 'center', alignItems: 'center', alignSelf: 'center' }}>
+                        <TouchableOpacity onPress={onInvestNow} style={[styles.investButton, { backgroundColor: mainColor }]}>
+                            <Text style={styles.investButtonText}>
+                                {subscriptionStatus === 'active'
+                                    ? 'Subscribed'
+                                    : subscriptionStatus === 'renew'
+                                    ? 'Renew now'
+                                    : subscriptionStatus === 'expired'
+                                    ? 'Resubscribe'
+                                    : 'Invest now'}
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+            </View>
+
+            <BespokePerformanceModals viewModel={viewModel} actions={actions} slots={slots} />
         </SafeAreaView>
     );
 };

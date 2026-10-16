@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 
+import { getAuth } from '@react-native-firebase/auth';
 import server from '../../utils/serverConfig';
 import axios from 'axios';
 import CryptoJS from 'react-native-crypto-js';
@@ -7,8 +8,9 @@ import CryptoJS from 'react-native-crypto-js';
 import Config from 'react-native-config';
 import { generateToken } from '../../utils/SecurityTokenManager';
 import ICICIConnectUI from '../../UIComponents/BrokerConnectionUI/ICICIConnectUI';
+import BrokerConnectStepperSheet from './BrokerConnectStepperSheet';
 import { useTrade } from '../../screens/TradeContext';
-import { getAdvisorSubdomain } from '../../utils/variantHelper';
+import {getTenantSubdomain} from '../../utils/variantHelper';
 import eventEmitter from '../EventEmitter';
 import useModalStore from '../../GlobalUIModals/modalStore';
 import {
@@ -17,6 +19,8 @@ import {
   sdkDualWriteSafely,
 } from '../../sdk/brokerSdkBridge';
 import {getAccountEmail} from '../../utils/accountEmail';
+
+import { designColor } from '../../design/literalTokens';
 
 const ICICIUPModal = ({
   isVisible,
@@ -42,6 +46,8 @@ const ICICIUPModal = ({
   const sheet = useRef(null);
   const scrollViewRef = useRef(null);
 
+  const auth = getAuth();
+  const user = auth.currentUser;
   const userEmail = getAccountEmail();
 
   const checkValidApiAnSecretdecrypt = details => {
@@ -59,7 +65,7 @@ const ICICIUPModal = ({
         .get(`${server.server.baseUrl}api/user/getUser/${userEmail}`, {
           headers: {
             'Content-Type': 'application/json',
-            'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || getAdvisorSubdomain(),
+            'X-Advisor-Subdomain': getTenantSubdomain(configData),
             'aq-encrypted-key': generateToken(
               Config.REACT_APP_AQ_KEYS,
               Config.REACT_APP_AQ_SECRET,
@@ -120,7 +126,7 @@ const ICICIUPModal = ({
         data: JSON.stringify({ user_email: userEmail, user_broker: 'ICICI Direct' }),
         headers: {
           'Content-Type': 'application/json',
-          'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || getAdvisorSubdomain(),
+          'X-Advisor-Subdomain': getTenantSubdomain(configData),
           'aq-encrypted-key': generateToken(Config.REACT_APP_AQ_KEYS, Config.REACT_APP_AQ_SECRET),
         },
       });
@@ -188,10 +194,19 @@ const ICICIUPModal = ({
         user_email: userEmail,
         apiKey: apiKey,
         accessToken: apiSession,
+        // ccxt resolves ICICI credentials DB-first by default, so without
+        // this flag the exchange validates with the stored top-level
+        // jwtToken — which belongs to a DIFFERENT broker after the user
+        // switches primary (e.g. DefinEdge) or is yesterday's dead session.
+        // Breeze then replies "Invalid User Details" and the fresh one-shot
+        // apisession is silently discarded → reconnect stuck on
+        // "Session expired" (web twin fixed 2026-08-14; same opt-in the
+        // Node connect-broker probe has used since 2026-07-20).
+        preferBodyCredentials: true,
       }),
       headers: {
         'Content-Type': 'application/json',
-        'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || getAdvisorSubdomain(),
+        'X-Advisor-Subdomain': getTenantSubdomain(configData),
         'aq-encrypted-key': generateToken(Config.REACT_APP_AQ_KEYS, Config.REACT_APP_AQ_SECRET),
       },
     })
@@ -222,7 +237,7 @@ const ICICIUPModal = ({
           {
             headers: {
               'Content-Type': 'application/json',
-              'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || getAdvisorSubdomain(),
+              'X-Advisor-Subdomain': getTenantSubdomain(configData),
               'aq-encrypted-key': generateToken(Config.REACT_APP_AQ_KEYS, Config.REACT_APP_AQ_SECRET),
             },
           },
@@ -282,7 +297,7 @@ const ICICIUPModal = ({
       .put(`${server.server.baseUrl}api/icici/update-key`, data, {
         headers: {
           'Content-Type': 'application/json',
-          'X-Advisor-Subdomain': configData?.config?.REACT_APP_HEADER_NAME || getAdvisorSubdomain(),
+          'X-Advisor-Subdomain': getTenantSubdomain(configData),
           'aq-encrypted-key': generateToken(
             Config.REACT_APP_AQ_KEYS,
             Config.REACT_APP_AQ_SECRET,
@@ -320,8 +335,12 @@ const ICICIUPModal = ({
     setShowBrokerModal(false);
   };
 
-  return (
-    <ICICIConnectUI
+  // OAuth phase keeps the existing ICICIConnectUI WebView flow untouched;
+  // credential phase renders the shared web-parity stepper (mirrors web
+  // connectBroker.js "ICICI Direct" config). NEVER RN <Modal> here.
+  if (showWebView) {
+    return (
+      <ICICIConnectUI
       isVisible={isVisible}
       onClose={onClose}
       apiKey={apiKey}
@@ -350,6 +369,60 @@ const ICICIUPModal = ({
       unmetAck={unmetAck}
       setUnmetAck={setUnmetAck}
       configData={configData}
+    />
+    );
+  }
+
+  return (
+    <BrokerConnectStepperSheet
+      isVisible={!!isVisible}
+      onClose={onClose}
+      broker="ICICI Direct"
+      config={{
+        monogram: 'I',
+        brandFrom: designColor('f37e20'),
+        brandTo: designColor('a3231f'),
+        portalUrl: 'https://api.icicidirect.com/apiuser/home',
+        portalLabel: 'Open ICICI Breeze portal',
+        redirectUrl: `${server.ccxtServer.baseUrl}icici/auth-callback/${getTenantSubdomain(configData)}`,
+        walkthroughVideoId: 'PFiVLkdIhk8',
+        guideSteps: [
+          'Log in to your <b>ICICI Direct</b> account with OTP',
+          'Open the <b>Register an App</b> tab',
+          `Name it <b>${Config.REACT_APP_WHITE_LABEL_TEXT || 'AlphaQuark'}</b>, set the Redirect URL below`,
+          'Paste your <b>IP</b> into the <b>IP Address</b> field, Submit',
+          'Open the <b>View Apps</b> tab',
+          'Copy the <b>API key</b> and <b>Secret key</b>',
+        ],
+      }}
+      egressBrokerKey="icicidirect"
+      customerId={userDetails?._id}
+      customerEmail={userEmail}
+      egressReady={egressReady}
+      setEgressReady={setEgressReady}
+      unmetAck={unmetAck}
+      setUnmetAck={setUnmetAck}
+      fields={[
+        {
+          label: 'API Key',
+          value: apiKey,
+          onChange: (t) => setApiKey(t.trim()),
+          password: true,
+          placeholder: 'Paste your ICICI API key',
+        },
+        {
+          label: 'Secret Key',
+          value: secretKey,
+          onChange: (t) => setSecretKey(t.trim()),
+          password: true,
+          placeholder: 'Paste your ICICI secret key',
+        },
+      ]}
+      phase="creds"
+      canSubmit={Boolean(apiKey) && Boolean(secretKey)}
+      submitLabel="Connect ICICI Direct"
+      loading={loading}
+      onSubmit={initiateAuth}
     />
   );
 };

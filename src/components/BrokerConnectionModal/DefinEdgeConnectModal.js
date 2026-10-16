@@ -16,38 +16,45 @@
  *     api_secret (→ secretKey), actid (→ clientCode) on the user doc and
  *     `connected_brokers[DefinEdge Securities]`.
  *
+ *   Reconnect mode (reauthConfig.definedgeOtpToken): an 8h session has
+ *   expired but the stored api_token/api_secret never do. The backend's
+ *   reauth-url branch reuses the STORED creds server-side and hands back a
+ *   fresh otp_token — so reconnect renders ONLY the OTP step (no credential
+ *   form, no Static-IP / video / guide, which are one-time onboarding) and
+ *   verifies via PUT /api/definedge/connect-broker with reuseStoredCreds:
+ *   true (no creds in the payload). Mirrors web DefinEdgeConnection.js.
+ *
  *   No resend-otp endpoint — if OTP isn't received the user re-runs
  *   initiate-login.
  *
- * Credentials wrapped with the same AES `ApiKeySecret` envelope as
- * Arihant / Kotak / AliceBlue.
+ *   Credentials wrapped with the same AES `ApiKeySecret` envelope as
+ *   Arihant / Kotak / AliceBlue.
  *
- * Cross-ref: docs/BROKER_CONNECTION.md § DefinEdge Securities.
+ *   Cross-ref: docs/BROKER_CONNECTION.md § DefinEdge Securities.
  */
-import React, { useState, useEffect } from 'react';
-import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  Linking,
-} from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import BrokerConnectStepperSheet from './BrokerConnectStepperSheet';
 import axios from 'axios';
 import CryptoJS from 'react-native-crypto-js';
+import { getAuth } from '@react-native-firebase/auth';
 import Config from 'react-native-config';
 import server from '../../utils/serverConfig';
 import { generateToken } from '../../utils/SecurityTokenManager';
-import { getAdvisorSubdomain } from '../../utils/variantHelper';
+import {getAdvisorSubdomain, getTenantSubdomain} from '../../utils/variantHelper';
 import { useTrade } from '../../screens/TradeContext';
+import {useConfig} from '../../context/ConfigContext';
 import eventEmitter from '../EventEmitter';
 import useModalStore from '../../GlobalUIModals/modalStore';
 import {getAccountEmail} from '../../utils/accountEmail';
+import {
+  generateDeviceTotpFromSeed,
+  hasDeviceTotp,
+  removeDeviceTotp,
+  saveDeviceTotpSeed,
+  unlockDeviceTotpLogin,
+} from '../../services/DeviceTotpVault';
+
+import { designColor } from '../../design/literalTokens';
 
 const wrapCredential = (value) =>
   CryptoJS.AES.encrypt(String(value || ''), 'ApiKeySecret').toString();
@@ -56,25 +63,48 @@ const DefinEdgeConnectModal = ({
   isVisible,
   onClose,
   fetchBrokerStatusModal,
+  reauthConfig,
 }) => {
   const { configData } = useTrade();
+  const runtimeConfig = useConfig();
   const showAlert = useModalStore((s) => s.showAlert);
+  const auth = getAuth();
   const userEmail = getAccountEmail();
 
   const [apiKey, setApiKey] = useState('');        // api_token
   const [secretKey, setSecretKey] = useState('');  // api_secret
   const [otp, setOtp] = useState('');
   const [otpToken, setOtpToken] = useState('');
-  const [step, setStep] = useState('creds'); // creds | otp
+  // Reconnect (definedgeOtpToken) starts directly on the OTP step — the
+  // backend already fired initiate-login with stored creds and returned the
+  // otp_token. Full connect (no token) starts on the creds step.
+  const [step, setStep] = useState(
+    reauthConfig?.definedgeOtpToken ? 'otp' : 'creds',
+  ); // creds | otp
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showSecret, setShowSecret] = useState(false);
   const [userDetails, setUserDetails] = useState(null);
+  const autoReauthStartedRef = useRef(false);
+  const deviceReconnectStartedRef = useRef(false);
+  const deviceTotpEnabled =
+    runtimeConfig?.deviceTotpEnabled === true ||
+    configData?.config?.deviceTotpEnabled === true;
+  const [hasSavedTotp, setHasSavedTotp] = useState(false);
+  const [saveTotpOnDevice, setSaveTotpOnDevice] = useState(false);
+  const [deviceTotpSeed, setDeviceTotpSeed] = useState('');
+  const totpIdentity = React.useMemo(
+    () => ({
+      advisor: getTenantSubdomain(configData),
+      broker: 'DefinEdge Securities',
+      userEmail,
+    }),
+    [configData, userEmail],
+  );
 
   const headers = () => ({
     'Content-Type': 'application/json',
-    'X-Advisor-Subdomain':
-      configData?.config?.REACT_APP_HEADER_NAME || getAdvisorSubdomain(),
+    'X-Advisor-Subdomain': getTenantSubdomain(configData),
     'aq-encrypted-key': generateToken(
       Config.REACT_APP_AQ_KEYS,
       Config.REACT_APP_AQ_SECRET,
@@ -83,12 +113,28 @@ const DefinEdgeConnectModal = ({
 
   useEffect(() => {
     if (!isVisible) return;
-    setStep('creds');
+    // Reconnect mode: keep the otp_token handed back by reauth-url and land
+    // straight on the OTP step. Full connect: reset to the creds step.
+    if (reauthConfig?.definedgeOtpToken) {
+      setOtpToken(reauthConfig.definedgeOtpToken);
+      setStep('otp');
+    } else {
+      setStep('creds');
+    }
     setOtp('');
-    setOtpToken('');
     setError('');
     setLoading(false);
+    autoReauthStartedRef.current = false;
+    deviceReconnectStartedRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVisible]);
+
+  useEffect(() => {
+    if (!isVisible || !deviceTotpEnabled || !userEmail) return;
+    hasDeviceTotp(totpIdentity)
+      .then(setHasSavedTotp)
+      .catch(() => setHasSavedTotp(false));
+  }, [isVisible, deviceTotpEnabled, userEmail, totpIdentity]);
 
   useEffect(() => {
     if (!userEmail || !isVisible) return;
@@ -103,13 +149,15 @@ const DefinEdgeConnectModal = ({
 
   const uid = userDetails?._id;
 
-  const initiateLogin = async () => {
+  const initiateLogin = useCallback(async (storedCredentials = null) => {
     setError('');
-    if (!apiKey.trim() || apiKey.trim().length < 8) {
+    const nextApiKey = storedCredentials?.apiKey || apiKey;
+    const nextSecretKey = storedCredentials?.secretKey || secretKey;
+    if (!nextApiKey.trim() || nextApiKey.trim().length < 8) {
       setError('API token looks too short — copy from MyAccount → API Config.');
       return;
     }
-    if (!secretKey.trim() || secretKey.trim().length < 8) {
+    if (!nextSecretKey.trim() || nextSecretKey.trim().length < 8) {
       setError('API secret looks too short — copy from MyAccount → API Config.');
       return;
     }
@@ -124,8 +172,8 @@ const DefinEdgeConnectModal = ({
         `${server.server.baseUrl}api/definedge/initiate-login`,
         {
           uid,
-          apiKey: wrapCredential(apiKey.trim()),
-          apiSecret: wrapCredential(secretKey.trim()),
+          apiKey: wrapCredential(nextApiKey.trim()),
+          apiSecret: wrapCredential(nextSecretKey.trim()),
         },
         { headers: headers() },
       );
@@ -138,11 +186,26 @@ const DefinEdgeConnectModal = ({
       } else {
         setOtpToken(token);
         setStep('otp');
+        if (saveTotpOnDevice && deviceTotpSeed) {
+          try {
+            const generatedOtp = generateDeviceTotpFromSeed(deviceTotpSeed);
+            setOtp(generatedOtp);
+            await connectDefinEdge(generatedOtp, token);
+          } catch (totpError) {
+            setError(
+              totpError?.message ||
+                'Could not generate a TOTP from the setup key. Copy the Base32 key again.',
+            );
+          }
+          return;
+        }
         if (showAlert) {
           showAlert(
             'success',
-            'OTP sent',
-            data.message || 'OTP sent to your registered DefinEdge contact.',
+            saveTotpOnDevice ? 'Enter External TOTP' : 'OTP sent',
+            saveTotpOnDevice
+              ? 'Enter the current code from your External TOTP setup to finish and protect quick reconnect.'
+              : data.message || 'OTP sent to your registered DefinEdge contact.',
           );
         }
       }
@@ -155,15 +218,36 @@ const DefinEdgeConnectModal = ({
     } finally {
       setLoading(false);
     }
-  };
+  // The callback invokes connectDefinEdge only after the broker returns its
+  // challenge token. Including that render-local handler would recreate this
+  // callback on every render and retrigger the stored-credential effect.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiKey, secretKey, uid, showAlert, saveTotpOnDevice, deviceTotpSeed]);
 
-  const connectDefinEdge = async () => {
+  useEffect(() => {
+    if (
+      !isVisible ||
+      !reauthConfig?.definedgeStoredCredentials ||
+      !uid ||
+      autoReauthStartedRef.current
+    ) {
+      return;
+    }
+    autoReauthStartedRef.current = true;
+    setApiKey(reauthConfig.apiKey);
+    setSecretKey(reauthConfig.secretKey);
+    initiateLogin(reauthConfig);
+  }, [isVisible, reauthConfig, uid, initiateLogin]);
+
+  const connectDefinEdge = async (otpOverride = '', otpTokenOverride = '') => {
     setError('');
-    if (!/^\d+$/.test(otp) || otp.length < 4 || otp.length > 8) {
+    const activeOtp = String(otpOverride || otp || '');
+    if (!/^\d+$/.test(activeOtp) || activeOtp.length < 4 || activeOtp.length > 8) {
       setError('OTP must be 4–8 digits.');
       return;
     }
-    if (!otpToken) {
+    const activeOtpToken = otpTokenOverride || otpToken;
+    if (!activeOtpToken) {
       setStep('creds');
       setError('Session lost — please re-enter your api_token and api_secret.');
       return;
@@ -172,17 +256,33 @@ const DefinEdgeConnectModal = ({
     try {
       await axios.put(
         `${server.server.baseUrl}api/definedge/connect-broker`,
-        {
-          uid,
-          otpToken,
-          otp,
-          apiKey: wrapCredential(apiKey.trim()),
-          apiSecret: wrapCredential(secretKey.trim()),
-        },
+        reauthConfig?.definedgeOtpToken
+          ? // Reconnect: backend reuses the STORED creds server-side — the
+            // app never touches the api_secret on a session refresh.
+            { uid, otpToken: activeOtpToken, otp: activeOtp, reuseStoredCreds: true }
+          : {
+              uid,
+              otpToken: activeOtpToken,
+              otp: activeOtp,
+              apiKey: wrapCredential(apiKey.trim()),
+              apiSecret: wrapCredential(secretKey.trim()),
+            },
         { headers: headers() },
       );
       if (showAlert) {
         showAlert('success', 'Connected', 'DefinEdge connected successfully.');
+      }
+      if (deviceTotpEnabled && saveTotpOnDevice && deviceTotpSeed) {
+        try {
+          await saveDeviceTotpSeed(totpIdentity, deviceTotpSeed, '');
+          setHasSavedTotp(true);
+        } catch (vaultError) {
+          showAlert?.(
+            'error',
+            'Connected; quick reconnect was not saved',
+            vaultError?.message || 'Check the TOTP secret and enable it again.',
+          );
+        }
       }
       eventEmitter.emit('refreshEvent', { source: 'DefinEdge connect' });
       if (fetchBrokerStatusModal) fetchBrokerStatusModal();
@@ -198,188 +298,152 @@ const DefinEdgeConnectModal = ({
     }
   };
 
+  useEffect(() => {
+    if (
+      !isVisible ||
+      !deviceTotpEnabled ||
+      !reauthConfig?.definedgeOtpToken ||
+      !uid ||
+      deviceReconnectStartedRef.current
+    ) return;
+    deviceReconnectStartedRef.current = true;
+    (async () => {
+      const saved = await hasDeviceTotp(totpIdentity).catch(() => false);
+      setHasSavedTotp(saved);
+      if (!saved) return;
+      try {
+        const login = await unlockDeviceTotpLogin(totpIdentity);
+        if (!login?.totp) throw new Error('The protected DefinEdge login is incomplete.');
+        setOtp(login.totp);
+        await connectDefinEdge(login.totp);
+      } catch (vaultError) {
+        setError(vaultError?.message || 'Quick reconnect failed. Enter the current TOTP or OTP.');
+      }
+    })();
+    // The broker challenge token is scoped to this modal open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVisible, deviceTotpEnabled, reauthConfig?.definedgeOtpToken, uid]);
+
+  const forgetSavedTotp = async () => {
+    await removeDeviceTotp(totpIdentity);
+    setHasSavedTotp(false);
+    setSaveTotpOnDevice(false);
+  };
+
+  // Rendered through the shared BrokerConnectStepperSheet — the RN port of
+  // web's BrokerConnectStepper (same guide steps, brand, portal link, and
+  // EgressIpCallout static-IP gating as prod web's DefinEdgeConnection.js).
+  // NEVER use React Native's <Modal> here: it hard-freezes this app on
+  // Android (New Architecture) — tiny white box top-left + wedged UI thread.
+  const reconnectMode = !!reauthConfig?.definedgeOtpToken;
   return (
-    <Modal
-      visible={!!isVisible}
-      animationType="slide"
-      transparent
-      onRequestClose={loading ? undefined : onClose}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.backdrop}
-      >
-        <View style={styles.sheet}>
-          <View style={styles.headerRow}>
-            <Text style={styles.headerTitle}>Connect DefinEdge</Text>
-            {!loading && (
-              <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}>
-                <Text style={styles.closeX}>×</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
-            <Text style={styles.subtitle}>
-              {step === 'creds'
-                ? "We'll send an OTP to your registered DefinEdge contact."
-                : 'Enter the OTP DefinEdge sent to your registered mobile/email.'}
-            </Text>
-
-            <View style={styles.infoBox}>
-              <Text style={styles.infoText}>
-                Log in at{' '}
-                <Text
-                  style={styles.link}
-                  onPress={() =>
-                    Linking.openURL('https://myaccount.definedgesecurities.com/')
-                  }
-                >
-                  myaccount.definedgesecurities.com
-                </Text>{' '}
-                → API Config to generate your api_token + api_secret. Sessions
-                last ~8 hours — re-OTP after expiry. Note: tokens regenerate
-                when you change your DefinEdge password.
-              </Text>
-            </View>
-
-            {step === 'creds' ? (
-              <>
-                <Text style={styles.label}>API Token *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={apiKey}
-                  onChangeText={(t) => setApiKey(t.trim())}
-                  placeholder="Enter api_token from MyAccount"
-                  autoCapitalize="none"
-                  editable={!loading}
-                />
-
-                <Text style={styles.label}>API Secret *</Text>
-                <View style={styles.passwordWrap}>
-                  <TextInput
-                    style={[styles.input, { flex: 1, marginBottom: 0 }]}
-                    value={secretKey}
-                    onChangeText={(t) => setSecretKey(t.trim())}
-                    placeholder="Enter api_secret from MyAccount"
-                    secureTextEntry={!showSecret}
-                    autoCapitalize="none"
-                    editable={!loading}
-                  />
-                  <TouchableOpacity
-                    style={styles.eyeBtn}
-                    onPress={() => setShowSecret((v) => !v)}
-                  >
-                    <Text style={styles.eyeBtnText}>{showSecret ? 'Hide' : 'Show'}</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : (
-              <>
-                <Text style={styles.label}>OTP *</Text>
-                <TextInput
-                  style={[styles.input, styles.otpInput]}
-                  value={otp}
-                  onChangeText={(t) => setOtp(t.replace(/\D/g, '').slice(0, 8))}
-                  placeholder="Enter OTP"
-                  keyboardType="number-pad"
-                  maxLength={8}
-                  editable={!loading}
-                  autoFocus
-                />
-                <Text style={styles.expiryHint}>
-                  Didn't receive an OTP? Go Back and re-run "Send OTP" — DefinEdge does not support resend.
-                </Text>
-              </>
-            )}
-
-            {!!error && (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            )}
-          </ScrollView>
-
-          <View style={styles.footer}>
-            {step === 'otp' && (
-              <TouchableOpacity
-                style={styles.backBtn}
-                onPress={() => {
-                  setStep('creds');
-                  setOtp('');
-                  setOtpToken('');
-                  setError('');
-                }}
-                disabled={loading}
-              >
-                <Text style={styles.backBtnText}>Back</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
-              onPress={step === 'creds' ? initiateLogin : connectDefinEdge}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <Text style={styles.submitBtnText}>
-                  {step === 'creds' ? 'Send OTP' : 'Connect DefinEdge'}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    <BrokerConnectStepperSheet
+      isVisible={!!isVisible}
+      onClose={onClose}
+      broker="DefinEdge Securities"
+      config={{
+        monogram: 'D',
+        brandFrom: designColor('1565c0'),
+        brandTo: designColor('0d3f8a'),
+        // Reconnect is OTP-only — the stored api_token/api_secret are valid,
+        // only the 8h session expired. One-time onboarding (video, guide,
+        // Static-IP) is a full-connect surface only.
+        portalUrl: reconnectMode
+          ? undefined
+          : 'https://myaccount.definedgesecurities.com',
+        portalLabel: 'Open Definedge MyAccount',
+        walkthroughVideoId: reconnectMode ? undefined : 'A6ytHApBTo4',
+        guideSteps: reconnectMode
+          ? []
+          : [
+              'Log in at <b>signin.definedgesecurities.com</b>',
+              'Open <b>MyAccount → API Config</b>',
+              'Whitelist the <b>IP</b> below',
+              'Copy your <b>API Token</b> and <b>API Secret</b>',
+              'For quick reconnect, open <b>MyAccount → Account → Security → Enable External TOTP</b>, verify the emailed OTP, then choose <b>Can’t Scan? Copy the Key</b>.',
+              'Paste the API credentials and Base32 setup key here. AlphaQuark generates the verification TOTP automatically.',
+            ],
+        note: reconnectMode
+          ? 'Your DefinEdge session expired. Your saved API credentials are still valid — just re-verify with the OTP.'
+          : "DefinEdge sessions last ~8 hours; you'll re-verify with OTP after that.",
+      }}
+      egressBrokerKey="definedge"
+      customerId={uid}
+      customerEmail={userEmail}
+      fields={[
+        {
+          label: 'API Token',
+          value: apiKey,
+          onChange: (t) => setApiKey(t.trim()),
+          password: true,
+          placeholder: 'From MyAccount → API Config',
+        },
+        {
+          label: 'API Secret',
+          value: secretKey,
+          onChange: (t) => setSecretKey(t.trim()),
+          password: true,
+          placeholder: 'From MyAccount → API Config',
+        },
+        ...(deviceTotpEnabled && saveTotpOnDevice && !hasSavedTotp ? [{
+          label: 'External TOTP Secret Key (Base32)',
+          value: deviceTotpSeed,
+          onChange: t => setDeviceTotpSeed(String(t || '')),
+          password: true,
+          autoCapitalize: 'none',
+          placeholder: 'Secret shown when enabling External TOTP',
+        }] : []),
+      ]}
+      deviceTotp={{
+        enabled: deviceTotpEnabled && !reconnectMode,
+        hasSaved: hasSavedTotp,
+        saveOnDevice: saveTotpOnDevice,
+        onToggleSave: () => setSaveTotpOnDevice(value => !value),
+        onUnlock: reconnectMode
+          ? async () => {
+              const login = await unlockDeviceTotpLogin(totpIdentity);
+              if (login?.totp) {
+                setOtp(login.totp);
+                await connectDefinEdge(login.totp);
+              }
+            }
+          : undefined,
+        onForget: forgetSavedTotp,
+        protectLabel: 'Enable quick reconnect on this phone',
+        savedLabel:
+          'The External TOTP key is protected on this phone. Manual broker verification remains available.',
+        pendingLabel:
+          'Stores only the External TOTP key in this phone’s protected keychain.',
+        unlockLabel: 'Reconnect with biometric unlock',
+        forgetLabel: 'Forget DefinEdge quick reconnect on this phone',
+      }}
+      phase={step === 'otp' ? 'otp' : 'creds'}
+      otp={{
+        value: otp,
+        onChange: (t) => setOtp(t.trim()),
+        sentToText: saveTotpOnDevice
+          ? 'Enter the current External TOTP from your authenticator.'
+          : 'Enter the OTP DefinEdge sent to your registered mobile/email.',
+      }}
+      error={error}
+      canSubmit={
+        step === 'otp'
+          ? Boolean(otp)
+          : Boolean(apiKey) &&
+            Boolean(secretKey) &&
+            (!saveTotpOnDevice || hasSavedTotp || Boolean(deviceTotpSeed))
+      }
+      submitLabel={step === 'otp' ? 'Verify & Reconnect' : 'Send OTP'}
+      loading={loading}
+      onSubmit={step === 'otp' ? connectDefinEdge : initiateLogin}
+      onBackStep={() => {
+        setStep('creds');
+        setOtp('');
+        setOtpToken('');
+        setError('');
+      }}
+    />
   );
 };
-
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
-  sheet: {
-    backgroundColor: '#ffffff', borderTopLeftRadius: 18, borderTopRightRadius: 18,
-    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 24, maxHeight: '92%',
-  },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: '#111827' },
-  closeX: { fontSize: 28, color: '#9ca3af', paddingHorizontal: 4, lineHeight: 28 },
-  scroll: { maxHeight: 460 },
-  subtitle: { fontSize: 13, color: '#6b7280', marginBottom: 14 },
-  infoBox: {
-    backgroundColor: '#eff6ff', borderColor: '#bfdbfe', borderWidth: 1,
-    borderRadius: 8, padding: 12, marginBottom: 14,
-  },
-  infoText: { fontSize: 12, color: '#1e40af', lineHeight: 18 },
-  link: { color: '#1d4ed8', textDecorationLine: 'underline' },
-  label: { fontSize: 12, fontWeight: '600', color: '#374151', marginBottom: 6, marginTop: 8 },
-  input: {
-    borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#111827',
-    marginBottom: 4, backgroundColor: '#fafafa',
-  },
-  passwordWrap: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  eyeBtn: { paddingHorizontal: 12, paddingVertical: 8 },
-  eyeBtnText: { color: '#1d4ed8', fontWeight: '600', fontSize: 12 },
-  otpInput: { textAlign: 'center', letterSpacing: 6, fontSize: 18 },
-  expiryHint: { fontSize: 11, color: '#6b7280', marginTop: 8 },
-  errorBox: {
-    marginTop: 12, backgroundColor: '#fef2f2', borderColor: '#fecaca',
-    borderWidth: 1, borderRadius: 6, padding: 10,
-  },
-  errorText: { color: '#991b1b', fontSize: 12 },
-  footer: { flexDirection: 'row', marginTop: 14 },
-  backBtn: {
-    paddingVertical: 12, paddingHorizontal: 18, borderRadius: 8,
-    borderWidth: 1, borderColor: '#d1d5db', marginRight: 8,
-  },
-  backBtnText: { color: '#374151', fontWeight: '600' },
-  submitBtn: {
-    flex: 1, backgroundColor: '#1d4ed8', borderRadius: 8,
-    paddingVertical: 14, alignItems: 'center',
-  },
-  submitBtnDisabled: { backgroundColor: '#9ca3af' },
-  submitBtnText: { color: '#ffffff', fontWeight: '700', fontSize: 15 },
-});
 
 export default DefinEdgeConnectModal;

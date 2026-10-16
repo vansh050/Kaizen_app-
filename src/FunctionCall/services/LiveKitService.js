@@ -13,6 +13,7 @@
  */
 
 import axios from 'axios';
+import { Platform } from 'react-native';
 import server from '../../utils/serverConfig';
 import {
   getPublicHeaders,
@@ -53,14 +54,37 @@ class LiveKitService {
   //   { paymentStatus: 'pending', orderId, cashfree: {...} }
   // ---------------------------------------------------------------------------
 
-  async purchaseWebinarTicket(lessonId, { userEmail, userName, mobile, returnUrl }) {
+  async purchaseWebinarTicket(lessonId, { userEmail, userName, mobile, returnUrl, couponCode, paymentInstrumentGroup, channelMetadata }) {
     const headers = await getOptionalAuthHeaders();
     const res = await axios.post(
       `${BASE}/webinars/${lessonId}/purchase`,
-      { userEmail, userName, mobile, returnUrl },
+      // couponCode is re-validated + finalAmount recomputed server-side
+      // (never trusts a FE number) — see aq_backend livekit.js purchase.
+      // channel lets the server apply supportAQ's app-only gateway switch.
+      {
+        userEmail, userName, mobile, returnUrl,
+        channel: Platform.OS === 'ios' ? 'ios' : 'android',
+        ...(couponCode ? { couponCode } : {}),
+        ...(paymentInstrumentGroup ? { paymentInstrumentGroup } : {}),
+        ...(channelMetadata ? { channelMetadata } : {}),
+      },
       { headers },
     );
     return res.data?.data;
+  }
+
+  // Validate a webinar coupon for a PREVIEW discount before paying (web
+  // parity: CourseCouponService.validateCoupon). The purchase endpoint
+  // re-computes finalAmount server-side and is authoritative — this is
+  // only for showing the customer the discount up front.
+  async validateWebinarCoupon(code, lessonId, orderAmount) {
+    const headers = await getOptionalAuthHeaders();
+    const res = await axios.post(
+      `${server.server.baseUrl}api/course-coupons/validate`,
+      { code, lessonId, orderAmount },
+      { headers },
+    );
+    return res.data; // { finalAmount, discount, couponId, message }
   }
 
   async getWebinarPurchaseStatus(orderId) {

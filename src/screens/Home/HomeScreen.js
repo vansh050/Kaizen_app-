@@ -1,5 +1,4 @@
-'use client';
-
+'use client';;
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -17,10 +16,27 @@ import {
   FlatList,
   Image,
   Modal,
+  ActivityIndicator,
+  Linking,
+  Alert,
 } from 'react-native';
 import { getAuth } from '@react-native-firebase/auth';
 import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import eventEmitter from '../../components/EventEmitter';
+import {
+  PENDING_DEEPLINK_KEY,
+  PENDING_DEEPLINK_EVENT,
+  resolveFunctionalDeepLink,
+  deepLinkResolveErrorMessage,
+} from '../../utils/smartLink';
+import {
+  startDeepLinkExecuteTarget,
+  needsEmailVerificationForLink,
+} from '../../utils/deepLinkExecuteTarget';
+
+// See consumePendingDeepLink below.
+let deeplinkConsumeInFlight = false;
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import YoutubePlayer from 'react-native-youtube-iframe';
 import Toast from 'react-native-toast-message';
@@ -47,7 +63,24 @@ import useHomeScreenTabs from './hooks/useHomeScreenTabs';
 import useHomeScreenModals from './hooks/useHomeScreenModals';
 import useHomeMarketSummary from './hooks/useHomeMarketSummary';
 import useHomePlanSummary from './hooks/useHomePlanSummary';
+import usePlanCategoryImages from '../../hooks/usePlanCategoryImages';
+import brokerDisplayConfig from '../../config/brokerDisplayConfig';
+
+// Stored broker names vary ('ICICI Direct', 'Hdfc Securities', 'IIFL
+// Securities') while the display config keys are short ('ICICI', 'HDFC',
+// 'IIFL'), so match on a normalised prefix.
+const normBroker = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const brokerLogoFor = broker => {
+  const n = normBroker(broker);
+  if (!n) return null;
+  const hit = brokerDisplayConfig.find(
+    b => n === normBroker(b.key) || n === normBroker(b.name) || n.startsWith(normBroker(b.key)),
+  );
+  return hit?.logo || null;
+};
+import {attachCategoryImages, modelPortfolioCategoryImage} from '../../utils/planCategories';
 import { useComponent } from '../../design/useDesign';
+import {getAdvisorContentProfile} from '../../utils/advisorContentProfile';
 // styles import retained — allTabData JSX subtrees reference styles from the
 // container's scope (e.g. styles.StockTitle for section headers). The
 // presentation imports the same styles file independently.
@@ -59,8 +92,7 @@ import notifee, {
   AndroidStyle,
 } from '@notifee/react-native';
 import WebinarReminderHandler from '../../FunctionCall/services/WebinarReminderHandler';
-import { ActivityIndicator } from 'react-native';
-
+import { tradeAlertAndroidBlock } from '../../FunctionCall/services/TradeAlertChannel';
 import server from '../../utils/serverConfig';
 import axios from 'axios';
 
@@ -68,7 +100,7 @@ import { useSocialProof } from '../../components/SocialProofProvider';
 import { useTrade } from '../TradeContext';
 import { generateToken } from '../../utils/SecurityTokenManager';
 import { useConfig } from '../../context/ConfigContext';
-import { getAdvisorSubdomain } from '../../utils/variantHelper';
+import {getAdvisorSubdomain, getTenantSubdomain} from '../../utils/variantHelper';
 import APP_VARIANTS from '../../utils/Config';
 import Icon1 from 'react-native-vector-icons/Fontisto';
 import moment from 'moment';
@@ -81,12 +113,33 @@ import AlphaQuarkBanner from '../../components/HomeScreenComponents/AlphaQuarkBa
 import KnowledgeHub from '../../components/HomeScreenComponents/KnowledgeHub';
 import ModelPortfolioScreen from '../Drawer/ModelPortfolioScreen';
 import UpdateAppModal, {checkForAppUpdate} from '../../UpdateAppModal';
-import {getAccountEmail, getAccountDisplayName} from '../../utils/accountEmail';
+import {
+  getAccountEmailAsync,
+  getAccountDisplayName,
+  useAccountEmail,
+} from '../../utils/accountEmail';
+import {subscribeToTradeLiveActivityToken} from '../../services/TradeLiveActivity';
+import NbaBanner from '../../components/designContainers/NbaBannerContainer';
+import PortfolioHealthSheet from '../../components/designContainers/PortfolioHealthSheetContainer';
+import { useCart } from '../../components/CartContext';
+import { useModal } from '../../components/ModalContext';
+
+import { designColor, designFont } from '../../design/literalTokens';
 
 const { height: screenHeight, width: screenWidth } = Dimensions.get('window');
 const selectedVariant = Config?.APP_VARIANT || 'rgxresearch';
 
 const pdfcicon = require('../../assets/pdf.png');
+
+const formatProvisionalDeadline = value => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+};
 
 // Ethical List Configuration (parity with web)
 const ETHICAL_CONFIG = {
@@ -103,6 +156,7 @@ const ETHICAL_CONFIG = {
 };
 
 const HomeScreen = ({ }) => {
+  const advisorContent = getAdvisorContentProfile();
   const {
     stockRecoNotExecutedfinal,
     recommendationStockfinal,
@@ -110,6 +164,7 @@ const HomeScreen = ({ }) => {
     getModelPortfolioStrategyDetails,
     getAllTrades,
     modelPortfolioStrategyfinal,
+    modelPortfolioEntitlementsStatus,
     rejectedTrades,
     ignoredTrades,
     getUserDeatils,
@@ -133,20 +188,74 @@ const HomeScreen = ({ }) => {
 
   // Get dynamic config from API
   const config = useConfig();
-  const themeColor = config?.themeColor || '#0056B7';
-  const mainColor = config?.mainColor || '#0056B7';
-  const secondaryColor = config?.secondaryColor || '#F0F0F0';
-  const gradient1 = config?.gradient1 || '#0056B7';
-  const gradient2 = config?.gradient2 || '#002651';
+  const themeColor = config?.themeColor || designColor('0056b7');
+  const mainColor = config?.mainColor || designColor('0056b7');
+  const secondaryColor = config?.secondaryColor || designColor('f0f0f0');
+  const gradient1 = config?.gradient1 || designColor('0056b7');
+  const gradient2 = config?.gradient2 || designColor('002651');
 
   const auth = getAuth();
   const user = auth.currentUser;
-  const userEmail = getAccountEmail();
+  const {cartCount = 0} = useCart() || {};
+  const {showAddToCartModal} = useModal() || {};
+  const [watchlistPreview, setWatchlistPreview] = useState([]);
+  // Avoid capturing a cold-start null for Publisher reconciliation.
+  const userEmail = useAccountEmail();
+  const provisionalHeaderName = configData?.config?.REACT_APP_HEADER_NAME;
+  const [provisionalMandate, setProvisionalMandate] = useState(null);
+  const [provisionalBannerDismissed, setProvisionalBannerDismissed] = useState(false);
+
+  // Provisional entitlement lookup belongs to the Home container. Design
+  // variants receive only display-ready data and a dismiss action.
+  useEffect(() => {
+    let active = true;
+    setProvisionalMandate(null);
+    setProvisionalBannerDismissed(false);
+    if (!userEmail) return undefined;
+
+    axios
+      .get(
+        `${server.server.baseUrl}api/subscription-check/provisional/${encodeURIComponent(userEmail)}`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Advisor-Subdomain': provisionalHeaderName,
+            'aq-encrypted-key': generateToken(
+              Config.REACT_APP_AQ_KEYS,
+              Config.REACT_APP_AQ_SECRET,
+            ),
+          },
+        },
+      )
+      .then(response => {
+        if (!active) return;
+        const payload = response?.data || {};
+        const mandates = payload.provisional || payload.mandates || payload.data || [];
+        const first = Array.isArray(mandates) ? mandates[0] : mandates;
+        if (
+          first &&
+          (first.mandate_status === 'pending' || first.entitlement_mode === 'provisional')
+        ) {
+          setProvisionalMandate(first);
+        }
+      })
+      .catch(() => {
+        // Missing endpoint / no mandate is intentionally an invisible state.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [provisionalHeaderName, userEmail]);
   // Resolve a displayable user name (alphanomy variant uses this for the
   // header greeting). Backend-stored `userDetails.name` is preferred (full
   // legal name); Firebase `user.displayName` is the fallback (Google /
   // Apple sign-in surface). Email-derived first-name remains the final
   // fallback, handled inside the variant presentation.
+  // getAccountDisplayName, not a raw `||` chain: it rejects the "Apple User"
+  // placeholder at every level, so an Apple sign-in whose Firebase profile
+  // carries that placeholder falls through to the email local-part instead of
+  // greeting the customer as "Apple User".
   const userName = getAccountDisplayName(userDetails?.name, user?.displayName);
   const [isLoading, setIsLoading] = useState(true);
   // Phase E prep (2026-05-01): tab + 7-overlay state consolidated behind a
@@ -277,47 +386,160 @@ const HomeScreen = ({ }) => {
   const showNotification = useSocialProof();
   const navigation = useNavigation();
 
-  // mobile-deeplink Phase 1: consume a pending functional deep-link (rebalance/
-  // execute) that smartLink.js resolved + stashed, and route to the rebalance
-  // surface. Fires once per stash; clears it so a later focus doesn't re-open.
-  const _deeplinkConsumed = useRef(false);
   useFocusEffect(
     React.useCallback(() => {
       let active = true;
-      (async () => {
-        try {
-          const raw = await AsyncStorage.getItem('pending_functional_deeplink');
-          if (!raw || !active) return;
-          const parsed = JSON.parse(raw) || {};
-          const resolved = parsed.resolved;
-          await AsyncStorage.removeItem('pending_functional_deeplink');
-          if (!resolved || _deeplinkConsumed.current) return;
-          _deeplinkConsumed.current = true;
-          const surface = String(resolved.surface || '');
-          if (
-            surface.startsWith('rebalance') ||
-            surface === 'trade_execute' ||
-            surface === 'basket_execute'
-          ) {
-            // Land on the rebalance/notifications surface with the resolved model.
-            // TODO(app team): in PushNotificationScreen, when deeplinkModelName is
-            // present, fetch that model's latest rebalance and render its
-            // RebalanceNotificationComponent (selectedNotification.modelName +
-            // .latestRebalance.adviceEntries) — same shape as a rebalance push.
-            navigation.navigate('PushNotificationScreen', {
-              deeplinkModelName: resolved.model_name,
-              deeplinkUniqueId: resolved.unique_id,
-            });
-          }
-        } catch (_) {
-          /* ignore — never block Home */
-        }
-      })();
+      AsyncStorage.getItem('watchlists')
+        .then(raw => {
+          if (!active) return;
+          const parsed = raw ? JSON.parse(raw) : {};
+          const seen = new Set();
+          const preview = Object.values(parsed || {})
+            .flatMap(items => (Array.isArray(items) ? items : []))
+            .filter(item => {
+              const key = String(
+                item?.tradingSymbol || item?.symbol || item?.ticker || item?.name || '',
+              ).toUpperCase();
+              if (!key || seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            })
+            .slice(0, 4);
+          setWatchlistPreview(preview);
+        })
+        .catch(() => {
+          if (active) setWatchlistPreview([]);
+        });
       return () => {
         active = false;
       };
-    }, [navigation]),
+    }, []),
   );
+
+
+  // Execute deep links (WhatsApp / Telegram → card), Phase 2 2026-10-10.
+  // smartLink.js resolves `/l/<tenant>?t=<token>` and stashes the result under
+  // PENDING_DEEPLINK_KEY. Here we consume it once (on focus, and on
+  // PENDING_DEEPLINK_EVENT when Home is already focused) and hand execute
+  // surfaces to the matching card via deepLinkExecuteTarget — the card then
+  // runs its own Accept/Trade handler, so the customer lands on the normal
+  // review with every gate intact. Before this, links only opened the
+  // notification list (PushNotificationScreen ignored the params).
+  // Doc: docs/APP_ARCHITECTURE.md § "Execute deep links".
+  const consumePendingDeepLink = React.useCallback(async () => {
+    // Module-wide guard: Home can be mounted more than once (Home tab +
+    // AdviceScreen alias), and both instances listen.
+    if (deeplinkConsumeInFlight) return;
+    deeplinkConsumeInFlight = true;
+    try {
+      const raw = await AsyncStorage.getItem(PENDING_DEEPLINK_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) || {};
+      let resolved = parsed.resolved;
+      let error = parsed.error;
+      let status = parsed.status;
+      // Signed out when the link was tapped: smartLink stashed only the token.
+      if (!resolved && !error && parsed.token) {
+        if (!getAuth().currentUser) return; // keep the stash until sign-in
+        const result = await resolveFunctionalDeepLink(parsed.token);
+        if (result?.success) {
+          resolved = result;
+        } else {
+          error = result?.error;
+          status = result?.status;
+        }
+      }
+      await AsyncStorage.removeItem(PENDING_DEEPLINK_KEY);
+      // Apple "Hide My Email": the sign-in token has no usable email, so the
+      // link cannot match the account. Offer the existing one-time-code email
+      // confirmation (it writes the email onto the Firebase user), keep the
+      // link, and retry it once afterwards. `emailVerifyAttempted` stops loops;
+      // if the confirmation merges accounts (sign in again), the kept link
+      // opens after the next sign-in.
+      if (
+        !resolved &&
+        parsed.token &&
+        !parsed.emailVerifyAttempted &&
+        needsEmailVerificationForLink(error, getAuth().currentUser?.email)
+      ) {
+        await AsyncStorage.setItem(
+          PENDING_DEEPLINK_KEY,
+          JSON.stringify({token: parsed.token, resolved: null, emailVerifyAttempted: true}),
+        );
+        Alert.alert(
+          'Confirm your email to open this link',
+          'This link was sent to the email on your account. Confirm that email once with a 6-digit code and the link will open.',
+          [
+            {
+              text: 'Not now',
+              style: 'cancel',
+              onPress: () => {
+                AsyncStorage.removeItem(PENDING_DEEPLINK_KEY).catch(() => {});
+              },
+            },
+            {
+              text: 'Confirm email',
+              onPress: () =>
+                navigation.navigate('EmailScreenAppleLogin', {
+                  onSubmit: verifiedEmail => {
+                    if (verifiedEmail) eventEmitter.emit(PENDING_DEEPLINK_EVENT);
+                  },
+                }),
+            },
+          ],
+        );
+        return;
+      }
+      if (!resolved) {
+        Toast.show({
+          type: 'info',
+          text1: 'Recommendation link',
+          text2: deepLinkResolveErrorMessage(error, status),
+          visibilityTime: 6000,
+          position: 'bottom',
+        });
+        return;
+      }
+      const surface = String(resolved.surface || '');
+      if (surface === 'broker_reauth') {
+        navigation.navigate('SubscriptionScreen');
+        return;
+      }
+      const started = startDeepLinkExecuteTarget(resolved, {
+        onUnclaimed: () => {
+          Toast.show({
+            type: 'info',
+            text1: 'Nothing pending for this link',
+            text2:
+              'This recommendation may already be executed, cancelled or expired. Your current recommendations are below.',
+            visibilityTime: 7000,
+            position: 'bottom',
+          });
+        },
+      });
+      if (started) {
+        Toast.show({
+          type: 'info',
+          text1: 'Opening your recommendation…',
+          visibilityTime: 2500,
+          position: 'bottom',
+        });
+      }
+    } catch (_) {
+      /* ignore — never block Home */
+    } finally {
+      deeplinkConsumeInFlight = false;
+    }
+  }, [navigation]);
+  useFocusEffect(
+    React.useCallback(() => {
+      consumePendingDeepLink();
+    }, [consumePendingDeepLink]),
+  );
+  useEffect(() => {
+    eventEmitter.on(PENDING_DEEPLINK_EVENT, consumePendingDeepLink);
+    return () => eventEmitter.off(PENDING_DEEPLINK_EVENT, consumePendingDeepLink);
+  }, [consumePendingDeepLink]);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleUserDataAndFcm = async () => {
@@ -326,12 +548,15 @@ const HomeScreen = ({ }) => {
       //  console.log('fcm_token:', fcmToken);
 
       if (fcmToken) {
+        // getAccountEmailAsync(), not user.email: an Apple user's Firebase
+        // email is null, which registered the device token against no
+        // account and silently disabled push notifications for them. Async
+        // (not the sync getAccountEmail) so a cold-start call before the
+        // in-memory cache primes still resolves the typed identity.
+        const accountEmail = await getAccountEmailAsync();
         // Define the payload
         const payload = {
-          // getAccountEmail(), not user.email: an Apple user's Firebase email
-          // is null, which registered the device token against no account and
-          // silently disabled push notifications for them.
-          email: getAccountEmail(),
+          email: accountEmail,
           fcm_token: fcmToken.toString(),
         };
         console.log(' Fcm token:', fcmToken);
@@ -365,7 +590,7 @@ const HomeScreen = ({ }) => {
           await axios.post(
             `${server.server.baseUrl}api/devices/register`,
             {
-              user_email: getAccountEmail(),
+              user_email: accountEmail,
               app: 'alphab2b',
               platform: Platform.OS, // 'ios' | 'android'
               device_token: fcmToken.toString(),
@@ -395,6 +620,43 @@ const HomeScreen = ({ }) => {
   useEffect(() => {
     handleUserDataAndFcm();
   }, [user]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || config?.tradeLiveActivityEnabled !== true) {
+      return undefined;
+    }
+    return subscribeToTradeLiveActivityToken(async ({token}) => {
+      if (!token) return;
+      try {
+        const [accountEmail, fcmToken] = await Promise.all([
+          getAccountEmailAsync(),
+          messaging().getToken(),
+        ]);
+        if (!accountEmail || !fcmToken) return;
+        await axios.post(
+          `${server.server.baseUrl}api/devices/live-activity`,
+          {
+            user_email: accountEmail,
+            app: 'alphab2b',
+            device_token: String(fcmToken),
+            live_activity_token: token,
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Advisor-Subdomain': getTenantSubdomain(configData),
+              'aq-encrypted-key': generateToken(
+                Config.REACT_APP_AQ_KEYS,
+                Config.REACT_APP_AQ_SECRET,
+              ),
+            },
+          },
+        );
+      } catch (error) {
+        console.warn('[LiveActivity] token registration failed:', error?.message || error);
+      }
+    });
+  }, [config?.tradeLiveActivityEnabled, configData?.config?.REACT_APP_HEADER_NAME, user]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -439,7 +701,15 @@ const HomeScreen = ({ }) => {
         if (updateCheckDone.current) return;
 
         try {
-          const result = await checkForAppUpdate(config?.latestAppVersion);
+          // Prefer the platform-specific floor, matching UpdateAppModal's
+          // pickPlatformVersion(). Reading config.latestAppVersion directly
+          // ignores latestAppVersionAndroid / latestAppVersionIos, which exist
+          // precisely so Android can be forced while iOS is still in review.
+          const platformKey =
+            Platform.OS === 'ios' ? 'latestAppVersionIos' : 'latestAppVersionAndroid';
+          const serverVersion =
+            config?.[platformKey] || config?.latestAppVersion || undefined;
+          const result = await checkForAppUpdate(serverVersion);
           if (result.updateAvailable) {
             setShowUpdateModal(true);
             updateCheckDone.current = true;
@@ -552,6 +822,22 @@ const HomeScreen = ({ }) => {
         return;
       }
 
+      const sdkEventType = remoteMessage?.data?.event_type || '';
+      if (sdkEventType === 'advice.sent' || sdkEventType.startsWith('order.')) {
+        await notifee.displayNotification({
+          title: remoteMessage?.notification?.title || 'Trade update',
+          body: remoteMessage?.notification?.body || 'Open the app to review the broker-confirmed status.',
+          data: remoteMessage.data,
+          android: await tradeAlertAndroidBlock({pressAction: {id: 'default'}, color: designColor('e8210c')}),
+          ios: {
+            sound: 'trade_alert.wav',
+            interruptionLevel: remoteMessage?.data?.time_sensitive === 'true' ? 'timeSensitive' : 'active',
+          },
+        });
+        setTimeout(() => { isNotificationTriggered.current = false; }, 500);
+        return;
+      }
+
       handleNotification(remoteMessage);
 
       const title =
@@ -574,19 +860,29 @@ const HomeScreen = ({ }) => {
           );
           break;
         case 'news_alert':
-          handleNewsNotification(
-            title,
-            body,
-            notificationType,
-            image,
-            description,
-          );
+          try {
+            await handleNewsNotification(
+              title,
+              body,
+              notificationType,
+              image,
+              description,
+            );
+          } catch (error) {
+            console.error('Error displaying news notification:', error);
+          }
           break;
         case 'New Rebalance':
           handleRebalanceNotification(title, body, notificationType);
           break;
         case 'reco_message':
           await handleRecoMessageNotification(title, body);
+          break;
+        case 'trade_modified':
+          // Trade coordinate edits (SL/TSL/Target) — push sent by ccxt
+          // advice/edit/comms.py (2026-08-11). Generic heads-up; background
+          // delivery is native via the notification block.
+          await displayNotification(title, body, notificationType);
           break;
         default:
           console.warn('Foreground: Unrecognized notification type');
@@ -609,16 +905,27 @@ const HomeScreen = ({ }) => {
     if (!title || !body) return;
 
     console.log('News Notification:', title, body);
+    const android = {
+      channelId: 'notifications',
+      importance: AndroidImportance.HIGH,
+      pressAction: { id: 'default' },
+      color: designColor('e8210c'),
+    };
+
+    // Communication Centre notifications do not require an image. Notifee
+    // rejects a BIGPICTURE style when `picture` is undefined/null, which
+    // prevented image-less news alerts from appearing while the app was open.
+    if (typeof image === 'string' && image.trim().length > 0) {
+      android.style = {
+        type: AndroidStyle.BIGPICTURE,
+        picture: image,
+      };
+    }
+
     const notificationConfig = {
       title: `${title}`,
-      body: `<b style="color: #4caf50; font-size: 12px;">${description}</b>`,
-      android: {
-        channelId: 'default',
-        style: { type: AndroidStyle.BIGPICTURE, picture: `${image}` },
-        importance: AndroidImportance.HIGH,
-        pressAction: { id: 'default' },
-        color: '#E8210C',
-      },
+      body: `${description || body}`,
+      android,
     };
 
     await notifee.displayNotification(notificationConfig);
@@ -633,10 +940,10 @@ const HomeScreen = ({ }) => {
       title: `${title || 'New message from your manager'}`,
       body: `${body || ''}`,
       android: {
-        channelId: 'default',
+        channelId: 'notifications',
         importance: AndroidImportance.HIGH,
         pressAction: { id: 'default' },
-        color: '#045DFF',
+        color: designColor('045dff'),
       },
     });
   };
@@ -686,15 +993,28 @@ const HomeScreen = ({ }) => {
     if (!title || !body) return;
 
     console.log('General Notification:', title, body);
+    // Trade advice (bespoke / rebalance / trade_modified / reco_message)
+    // rings with the bundled trade_alert.wav via the dedicated channel
+    // (client req 2026-08-13 #1); everything else keeps the default sound.
+    const tradeAlert = [
+      'bespoke',
+      'New Rebalance',
+      'trade_modified',
+      'reco_message',
+    ].includes(notificationType);
+    const android = tradeAlert
+      ? await tradeAlertAndroidBlock({ pressAction: { id: 'default' }, color: designColor('e8210c') })
+      : {
+          channelId: 'default',
+          importance: AndroidImportance.HIGH,
+          pressAction: { id: 'default' },
+          color: designColor('e8210c'),
+        };
     await notifee.displayNotification({
       title,
       body,
-      android: {
-        channelId: 'default',
-        importance: AndroidImportance.HIGH,
-        pressAction: { id: 'default' },
-        color: '#E8210C',
-      },
+      android,
+      ios: tradeAlert ? { sound: 'trade_alert.wav' } : undefined,
     });
   };
 
@@ -719,8 +1039,9 @@ const HomeScreen = ({ }) => {
         channelId: 'default',
         importance: AndroidImportance.HIGH,
         pressAction: { id: 'default' },
-        color: '#E8210C',
+        color: designColor('e8210c'),
       },
+      ios: { sound: 'trade_alert.wav' },
     };
 
     await notifee.displayNotification(notificationConfig);
@@ -740,8 +1061,9 @@ const HomeScreen = ({ }) => {
           channelId: 'default',
           importance: AndroidImportance.HIGH,
           pressAction: { id: 'default' },
-          color: '#E8210C',
+          color: designColor('e8210c'),
         },
+        ios: { sound: 'trade_alert.wav' },
       });
 
       // Optionally refresh trades if needed
@@ -756,10 +1078,24 @@ const HomeScreen = ({ }) => {
 
   useEffect(() => {
     async function createChannel() {
+      // Channel id 'notifications' — a NEW id chosen 2026-08-14 (ported
+      // from markup_app). Android permanently ignores sound/vibration
+      // changes on EXISTING channel records (AOSP
+      // PreferencesHelper.createNotificationChannel copies only
+      // name/description/group/importance on update, and even
+      // delete+recreate keeps the old record's sound — soft-delete). The
+      // legacy 'default' channel was created without `sound` and is stuck
+      // silent on every installed device, so all push display sites moved
+      // to this fresh channel, which is created WITH sound from day one.
+      // The FCM background path follows via
+      // `messaging_android_notification_channel_id` in firebase.json.
       await notifee.createChannel({
-        id: 'default',
-        name: 'Default Channel',
+        id: 'notifications',
+        name: 'Notifications',
         importance: AndroidImportance.HIGH,
+        sound: 'default',
+        vibration: true,
+        vibrationPattern: [300, 500],
       });
     }
 
@@ -770,33 +1106,30 @@ const HomeScreen = ({ }) => {
     // Set Android navigation bar styling
     if (Platform.OS === 'android') {
       const { StatusBar } = require('react-native');
-      StatusBar.setBackgroundColor('#000000', true);
+      StatusBar.setBackgroundColor(designColor('000000'), true);
       StatusBar.setBarStyle('light-content', true);
     }
   }, []);
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setIsRefreshing(true);
-    getAllFunds();
-    getUserDeatils();
-    getAllTrades();
-    fetchBlogs();
-    fetchPdf();
-    fetchVideos();
-    getModelPortfolioStrategyDetails();
-    getAllBestPerformers();
-    // useHomePlanSummary fetches once on mount and doesn't depend on any
-    // value pull-to-refresh changes, so a plan deleted/unpublished on the
-    // admin dashboard after that initial fetch kept showing on Home
-    // indefinitely, even across refresh (2026-07-16). Force it explicitly.
-    refetchPlanSummary();
-    // Emit the refresh event
-
-    //eventEmitter.emit('refreshEvent', { userEmail });
-
-    setTimeout(() => {
+    try {
+      await Promise.allSettled([
+        getAllFunds(),
+        getUserDeatils(),
+        getAllTrades(),
+        fetchBlogs(),
+        fetchPdf(),
+        fetchVideos(),
+        getModelPortfolioStrategyDetails(),
+        getAllBestPerformers(),
+        // useHomePlanSummary fetches once on mount and doesn't depend on any
+        // value pull-to-refresh changes, so force it explicitly.
+        refetchPlanSummary(),
+      ]);
+    } finally {
       setIsRefreshing(false);
-    }, 1000);
+    }
   };
 
   const [isNotificationPermissionGranted, setIsNotificationPermissionGranted] =
@@ -918,7 +1251,7 @@ const HomeScreen = ({ }) => {
     <View style={styles.emptyStateWrapper}>
       <View style={styles.emptyStateContainer}>
         <View style={styles.emptyStateIconContainer}>
-          <BookOpen size={32} color="#8B45FF" />
+          <BookOpen size={32} color={designColor('8b45ff')} />
         </View>
         <Text style={styles.emptyStateTitle}>No Blogs Available</Text>
         <Text style={styles.emptyStateText}>
@@ -934,7 +1267,7 @@ const HomeScreen = ({ }) => {
     <View style={styles.emptyStateWrapper}>
       <View style={styles.emptyStateContainer}>
         <View style={styles.emptyStateIconContainer}>
-          <Video size={32} color="#8B45FF" />
+          <Video size={32} color={designColor('8b45ff')} />
         </View>
         <Text style={styles.emptyStateTitle}>No Videos Available</Text>
         <Text style={styles.emptyStateText}>
@@ -950,7 +1283,7 @@ const HomeScreen = ({ }) => {
     <View style={styles.emptyStateWrapper}>
       <View style={styles.emptyStateContainer}>
         <View style={styles.emptyStateIconContainer}>
-          <FileText size={32} color="#8B45FF" />
+          <FileText size={32} color={designColor('8b45ff')} />
         </View>
         <Text style={styles.emptyStateTitle}>No PDF Resources Yet</Text>
         <Text style={styles.emptyStateText}>
@@ -1072,12 +1405,12 @@ const HomeScreen = ({ }) => {
         color: 'black',
         fontSize: 11,
         fontWeight: 0,
-        fontFamily: 'Poppins-Medium',
+        fontFamily: designFont('Poppins-Medium'),
       },
       text2Style: {
         color: 'black',
         fontSize: 12,
-        fontFamily: 'Poppins-Regular',
+        fontFamily: designFont('Poppins-Regular'),
       },
     });
   };
@@ -1176,7 +1509,7 @@ const HomeScreen = ({ }) => {
           style={styles.downloadButton}
           onPress={() => handleDirectDownload(item._id)}
           disabled={isLoading}>
-          <Download size={25} color={isLoading ? '#ccc' : 'black'} />
+          <Download size={25} color={isLoading ? designColor('ccc') : 'black'} />
         </TouchableOpacity>
       </View>
     );
@@ -1356,13 +1689,13 @@ const HomeScreen = ({ }) => {
                               fetchEthicalList();
                             }}>
                             <LinearGradient
-                              colors={['#000000', '#3A3A3A']}
+                              colors={[designColor('000000'), designColor('3a3a3a')]}
                               start={{ x: 0, y: 0 }}
                               end={{ x: 1, y: 1 }}
                               style={{
                                 borderRadius: 20,
                                 borderWidth: 1,
-                                borderColor: '#212121',
+                                borderColor: designColor('212121'),
                                 flexDirection: 'row',
                                 elevation: 0,
                                 paddingHorizontal: 8,
@@ -1372,8 +1705,8 @@ const HomeScreen = ({ }) => {
                               }}>
                               <Text
                                 style={{
-                                  color: '#fff',
-                                  fontFamily: 'Satoshi-Bold',
+                                  color: designColor('fff'),
+                                  fontFamily: designFont('Satoshi-Bold'),
                                   fontSize: 14,
                                 }}>
                                 {ETHICAL_CONFIG.buttonText}
@@ -1411,10 +1744,41 @@ const HomeScreen = ({ }) => {
   // ClientList subscription from turning a browseable model into a rebalance
   // card on Home.
   const hasActiveModelPortfolio = filteredAndSortedStrategies.length > 0;
+  const hasConfirmedNoModelPortfolio =
+    modelPortfolioEntitlementsStatus === 'confirmedEmpty';
   const hasActiveBespokeRecommendations =
     !!planList && (stockRecoNotExecutedfinal?.length || 0) > 0;
-  const hasActiveContent =
-    hasActiveModelPortfolio || hasActiveBespokeRecommendations;
+  // Presentation-neutral description of the two action sections (active
+  // model-portfolio rebalances and bespoke recommendations). The default
+  // design renders each feed item's prebuilt `component`; a variant with its
+  // own visual language renders `section.title` / `section.subtitle` /
+  // `section.onViewAll` in its own header and mounts `section.body`, which is
+  // the same execution list the default design shows.
+  const rebalanceSectionBody = (
+    <RebalanceAdvices userEmail={userEmail} type={'home'} />
+  );
+  const rebalanceSection = {
+    kind: 'rebalances',
+    title: 'Portfolio Recommendations',
+    subtitle: 'Model Portfolio Active Rebalances',
+    onViewAll: () => setSeeAllMP(true),
+    body: rebalanceSectionBody,
+  };
+  const recommendationSectionBody = (
+    <StockAdvices
+      userEmail={userEmail}
+      type={'home'}
+      tradeButtonColor={designColor('3e3efc')}
+    />
+  );
+  const recommendationSection = {
+    kind: 'recommendations',
+    title: 'Recommendations',
+    subtitle: `${config?.bespokePlanLabel || 'Bespoke'} Active Recommendations`,
+    onViewAll: () => setSeeAllBespoke(true),
+    body: recommendationSectionBody,
+    hasItems: (stockRecoNotExecutedfinal?.length || 0) > 0,
+  };
 
   // Data for All Tab
   // If user has active subscriptions (recos/rebalances), show those first, plans after.
@@ -1422,7 +1786,7 @@ const HomeScreen = ({ }) => {
   const allTabData = [
 
     // ── Active content first (only when user has subscriptions) ──
-    ...(hasActiveContent && filteredAndSortedStrategies.length > 0
+    ...(hasActiveModelPortfolio
       ? [
         {
           key: 'RebalanceAdvicesTop',
@@ -1451,15 +1815,18 @@ const HomeScreen = ({ }) => {
                 </TouchableOpacity>
               </View>
               <View style={{ marginLeft: 14 }}>
-                <RebalanceAdvices userEmail={userEmail} type={'home'} />
+                {rebalanceSectionBody}
               </View>
             </View>
           ),
+          section: rebalanceSection,
         },
       ]
       : []),
 
-    ...(hasActiveContent && stockRecoNotExecutedfinal?.length > 0
+    ...(!advisorContent.homeFeedRestructure &&
+      hasActiveBespokeRecommendations &&
+      stockRecoNotExecutedfinal?.length > 0
       ? [
         {
           key: 'StockAdvicesTop',
@@ -1486,20 +1853,19 @@ const HomeScreen = ({ }) => {
                 </TouchableOpacity>
               </View>
               <View style={{ marginLeft: 2 }}>
-                <StockAdvices
-                  userEmail={userEmail}
-                  type={'home'}
-                  tradeButtonColor="#3E3EFC"
-                />
+                {recommendationSectionBody}
               </View>
             </View>
           ),
+          section: recommendationSection,
         },
       ]
       : []),
 
     // ── Plans section (hidden when user has active subscriptions) ──
-    ...(!hasActiveContent && config?.modelPortfolioEnabled === true
+    ...(!hasActiveModelPortfolio &&
+      hasConfirmedNoModelPortfolio &&
+      config?.modelPortfolioEnabled === true
       ? [
         {
           key: 'AllPlanDetailsmp',
@@ -1536,7 +1902,76 @@ const HomeScreen = ({ }) => {
         },
       ]
       : []),
-    ...(!hasActiveContent && configData?.config?.REACT_APP_BESPOKE_PLANS_STATUS === true
+    ...(!hasActiveModelPortfolio && !hasConfirmedNoModelPortfolio
+      ? [
+        {
+          key: 'ModelPortfolioEntitlementStatus',
+          component: (
+            <View
+              style={{
+                marginHorizontal: 15,
+                marginTop: 18,
+                padding: 16,
+                borderRadius: 10,
+                backgroundColor: designColor('fff'),
+                alignItems: 'center',
+              }}>
+              {modelPortfolioEntitlementsStatus === 'identityMismatch' ? (
+                // The server proved a different customer than this device
+                // asked for, and the auth interceptor has already replayed the
+                // request once with a freshly minted token. Retrying again
+                // cannot change either identity, so offer the only action that
+                // can: sign out and sign back in as this account. Showing
+                // "Retry" here is what left a customer stuck on 2026-09-18.
+                (<>
+                  <Text style={styles.StockTitle}>
+                    Signed in as a different account
+                  </Text>
+                  <Text
+                    style={[
+                      styles.StockTitlebelow,
+                      {marginTop: 6, textAlign: 'center'},
+                    ]}>
+                    Your portfolios are linked to another login. Sign out and
+                    sign in again to see them.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate('More')}
+                    style={[styles.viewAll, {borderColor: mainColor, marginTop: 10}]}>
+                    <Text style={[styles.viewAllText, {color: mainColor}]}>
+                      Go to account settings
+                    </Text>
+                  </TouchableOpacity>
+                </>)
+              ) : modelPortfolioEntitlementsStatus === 'error' ? (
+                <>
+                  <Text style={styles.StockTitle}>
+                    Portfolio recommendations could not be refreshed
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => getModelPortfolioStrategyDetails()}
+                    style={[styles.viewAll, {borderColor: mainColor, marginTop: 10}]}>
+                    <Text style={[styles.viewAllText, {color: mainColor}]}>
+                      Retry
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <ActivityIndicator size="small" color={mainColor} />
+                  <Text style={[styles.StockTitlebelow, {marginTop: 8}]}>
+                    Checking portfolio recommendations…
+                  </Text>
+                </>
+              )}
+            </View>
+          ),
+        },
+      ]
+      : []),
+    ...(!advisorContent.homeFeedRestructure &&
+      !hasActiveBespokeRecommendations &&
+      configData?.config?.REACT_APP_BESPOKE_PLANS_STATUS === true
       ? [
         {
           key: 'AllPlanDetailsbespoke',
@@ -1579,7 +2014,7 @@ const HomeScreen = ({ }) => {
       : []),
 
     // Rebalance advices (only if not already shown at top)
-    ...(!hasActiveContent && filteredAndSortedStrategies.length > 0
+    ...(!hasActiveModelPortfolio && filteredAndSortedStrategies.length > 0
       ? [
         {
           key: 'RebalanceAdvices',
@@ -1608,10 +2043,11 @@ const HomeScreen = ({ }) => {
                 </TouchableOpacity>
               </View>
               <View style={{ marginLeft: 14 }}>
-                <RebalanceAdvices userEmail={userEmail} type={'home'} />
+                {rebalanceSectionBody}
               </View>
             </View>
           ),
+          section: rebalanceSection,
         },
       ]
       : []),
@@ -1628,13 +2064,13 @@ const HomeScreen = ({ }) => {
                 }}
               >
                 <LinearGradient
-                  colors={['#000000', '#3A3A3A']}
+                  colors={[designColor('000000'), designColor('3a3a3a')]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={{
                     borderRadius: 20,
                     borderWidth: 1,
-                    borderColor: '#212121',
+                    borderColor: designColor('212121'),
                     flexDirection: 'row',
                     elevation: 0,
                     paddingHorizontal: 10,
@@ -1644,8 +2080,8 @@ const HomeScreen = ({ }) => {
                   }}>
                   <Text
                     style={{
-                      color: '#fff',
-                      fontFamily: 'Satoshi-Bold',
+                      color: designColor('fff'),
+                      fontFamily: designFont('Satoshi-Bold'),
                       fontSize: 14,
                     }}>
                     {ETHICAL_CONFIG.buttonText}
@@ -1657,8 +2093,12 @@ const HomeScreen = ({ }) => {
         </>
       ),
     },
-    // Bespoke recommendations (only if not already shown at top)
-    ...(!hasActiveContent
+    // Bespoke recommendations (only if not already shown at top).
+    // Tenants that restructure the Home feed (MONEYMAN_HOME_FEED_RESTRUCTURE)
+    // never render this section — the RA has no bespoke recommendation
+    // product, so the empty "Recommendations" block must not appear on Home
+    // (RA request 2026-08-13).
+    ...(!advisorContent.homeFeedRestructure && !hasActiveBespokeRecommendations
       ? [
         {
           key: 'StockAdvices',
@@ -1685,25 +2125,29 @@ const HomeScreen = ({ }) => {
                 </TouchableOpacity>
               </View>
               <View style={{ marginLeft: 2 }}>
-                <StockAdvices
-                  userEmail={userEmail}
-                  type={'home'}
-                  tradeButtonColor="#3E3EFC"
-                />
+                {recommendationSectionBody}
               </View>
             </View>
           ),
+          section: recommendationSection,
         },
       ]
       : []),
-    {
-      key: 'KnowledgeHub',
-      component: (
-        <View style={{ marginTop: 10 }}>
-          <KnowledgeHub type="home" />
-        </View>
-      ),
-    },
+    // Knowledge Hub renders inside the Home footer (below "How We Invest")
+    // for tenants that restructure the feed — skip the feed entry there so
+    // it doesn't render twice (RA request 2026-08-13).
+    ...(!advisorContent.homeFeedRestructure
+      ? [
+          {
+            key: 'KnowledgeHub',
+            component: (
+              <View style={{ marginTop: 10 }}>
+                <KnowledgeHub type="home" />
+              </View>
+            ),
+          },
+        ]
+      : []),
     // {
     //   key: "LABEL",
     //   component: (
@@ -1752,22 +2196,71 @@ const HomeScreen = ({ }) => {
   // src/screens/Drawer/ModelPortfolioScreen.js — same auth headers,
   // same advisorTag/userEmail dependencies). Returns nulls until the
   // user is authenticated AND the advisor config has resolved.
-  const { heroPlan, bespokePlan, heroPlanRaw, bespokePlanRaw, refetch: refetchPlanSummary } = useHomePlanSummary({
+  const { heroPlan, modelPlans, bespokePlan, heroPlanRaw, bespokePlanRaw, bespokeCategoryGroups, refetch: refetchPlanSummary } = useHomePlanSummary({
     userEmail,
-    advisorTag: configData?.config?.REACT_APP_ADVISOR_SPECIFIC_TAG,
-    headerName: configData?.config?.REACT_APP_HEADER_NAME,
+    // Keep Home on the same tenant-resolution path as the Plans tab. Some
+    // white-label builds intentionally omit these values from fetched config
+    // and rely on packaged variant defaults; without the fallback Home showed
+    // an empty catalogue while Plans showed the same published plan.
+    // Same tenant fallbacks as the Plans tab (ModelPortfolioScreen), so a
+    // variant Home that renders the plan rail is not empty while config
+    // loads. The default presentation does not render plan summaries.
+    advisorTag:
+      configData?.config?.REACT_APP_ADVISOR_SPECIFIC_TAG ||
+      Config.REACT_APP_ADVISOR_SPECIFIC_TAG ||
+      getAdvisorSubdomain(),
+    headerName: getTenantSubdomain(configData),
   });
+  // Advisor-uploaded category images (docs/BESPOKE_PLAN_CATEGORIES.md, web repo).
+  const categoryImages = usePlanCategoryImages(getTenantSubdomain(configData));
 
   const home = {
     seeAllBespoke, setSeeAllBespoke,
     seeAllBespokeplan, setSeeAllBespokeplan,
     seeAllMP, setSeeAllMP,
+    // The "View all" Portfolio Recommendations list as a prebuilt body, so a
+    // variant can show it inside its own header/background (the default
+    // design mounts the same <RebalanceAdvices type="All"> itself). Only an
+    // element description — nothing mounts unless a design renders it.
+    seeAllMPBody: <RebalanceAdvices userEmail={userEmail} type={'All'} />,
     seeAllMPplan, setSeeAllMPplan,
     seeAllBlogs, setSeeAllBlogs,
     seeAllVideos, setSeeAllVideos,
     seeAllPDFs, setSeeAllPDFs,
     bespokeListTab, setBespokeListTab,
     userEmail, config,
+    selectedVariant,
+    slots: {
+      EducationalBlogs,
+      EducationalVideos,
+      EducationalPDF,
+      StockAdvices,
+      RebalanceAdvices,
+      ModelPortfolioScreen,
+      LinkOpeningWeb,
+      UpdateAppModal,
+      NbaBanner,
+      PortfolioHealthSheet,
+    },
+    homeFooterActions: {
+      onOpenUrl: url => {
+        if (!url) return;
+        Linking.openURL(url).catch(error =>
+          console.warn('[HomeFooter] Unable to open link:', error?.message),
+        );
+      },
+      onOpenLegalPage: (title, url) => {
+        if (!url) return;
+        navigation.navigate('WebViewScreen', {
+          title,
+          url,
+          pageType: 'legal',
+        });
+      },
+    },
+    homeFooterSlots: {
+      KnowledgeHubSlot: <KnowledgeHub type="home" />,
+    },
     isRefreshing, onRefresh,
     searchQuery, setSearchQuery,
     OpenNewsScreen,
@@ -1787,12 +2280,33 @@ const HomeScreen = ({ }) => {
     onStateChange, convertToTimeAgo,
     // Variant-facing market summary (additive — default presentation ignores).
     tickers, pnlSummary,
+    // Presentation-only broker state/actions for variants that render the
+    // connected and disconnected Home frames. Connection persistence and
+    // expiry checks remain in the existing broker flow.
+    broker,
+    // Logo of the connected broker (require() source) or null, so a design
+    // can show it without importing src/config (design-boundary rule).
+    brokerLogo: brokerLogoFor(broker),
+    onConnectBroker: () => navigation.navigate('Broker Setting'),
     // Variant-facing plan summaries.
-    heroPlan, bespokePlan,
+    heroPlan, modelPlans, bespokePlan,
     heroPlanRaw, bespokePlanRaw,
+    // Variant-facing plan categories: bespoke plans grouped by the advisor's
+    // `bespoke_category`, category images, and catalogue entry points. The
+    // default presentation ignores these.
+    bespokeCategoryGroups: attachCategoryImages(bespokeCategoryGroups, categoryImages),
+    modelPortfolioCategoryImage: modelPortfolioCategoryImage(categoryImages),
+    openBespokeCategory: category =>
+      navigation.navigate('Plans', {kind: 'bespoke', bespokeCategory: category ?? null}),
+    openModelPortfolioCatalog: () => navigation.navigate('Plans', {kind: 'mp'}),
     // Variant-facing user name for the greeting (full name preferred over
     // email-derived first-name fallback).
     userName,
+    cartCount,
+    onOpenCart: showAddToCartModal,
+    onOpenNotifications: () => navigation.navigate('NotificationListScreen'),
+    watchlistPreview,
+    onOpenWatchlist: () => navigation.navigate('WatchList'),
     // Variant-facing active-portfolio sections (alphanomy variant only):
     //   rebalanceList — sorted MP rebalance items the user is subscribed to,
     //                   with `latestRebalance` + `userInvestmentAmount`
@@ -1803,6 +2317,17 @@ const HomeScreen = ({ }) => {
     // Default presentation ignores these — they're additive, not contract-breaking.
     rebalanceList: filteredAndSortedStrategies,
     recommendationList: stockRecoNotExecutedfinal,
+    modelPortfolioEntitlementsStatus,
+    openAllPortfolioUpdates: () => setSeeAllMP(true),
+    openAllRecommendations: () => setSeeAllBespoke(true),
+    // The variant Home is a real tabbed shell. Route catalogue actions to the
+    // full Plans tab instead of reopening the legacy Home overlay (whose light
+    // header and back affordance do not belong to the active design variant).
+    openPlanCatalog: () => navigation.navigate('Plans'),
+    openBespokeCatalog: () => navigation.navigate('Plans'),
+    openKnowledgeHub: () => setSeeAllBlogs(true),
+    onRetryEntitlements: getModelPortfolioStrategyDetails,
+    onOpenAccountSettings: () => navigation.navigate('More'),
     // Variant-facing tenant copy for Home section subtitles. Same
     // pattern as `taglines.login` / `taglines.signup` (see
     // `src/context/ConfigContext.js § TENANT TAGLINES` and
@@ -1810,6 +2335,17 @@ const HomeScreen = ({ }) => {
     // alphanomy reads `home.taglines.modelPortfoliosSubtitle` etc.
     // and falls back per-field to its hardcoded copy.
     taglines: configData?.config?.taglines?.home || null,
+    provisionalBanner: {
+      viewModel: {
+        visible: Boolean(provisionalMandate && !provisionalBannerDismissed),
+        deadline: formatProvisionalDeadline(
+          provisionalMandate?.grace_deadline || provisionalMandate?.grace_until,
+        ),
+      },
+      actions: {
+        dismiss: () => setProvisionalBannerDismissed(true),
+      },
+    },
     // Variant-facing knowledge data (blogs / videos / pdf). Default
     // presentation uses the KnowledgeHub component directly; alphanomy
     // variant renders its own inline cards from these arrays.

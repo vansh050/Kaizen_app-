@@ -36,6 +36,7 @@ export const fetchBrokerAllHoldings = async (
   viewToken,
   serverId,
   configData,
+  userEmail,
 ) => {
   // Early return if broker is missing
   if (!broker) {
@@ -48,9 +49,14 @@ export const fetchBrokerAllHoldings = async (
 
   switch (broker) {
     case 'IIFL Securities':
-      // IIFL backend endpoints are currently unavailable (404)
-      console.warn('[fetchAllHoldings] IIFL Securities integration is temporarily unavailable');
-      return null;
+      if (!jwtToken) return null;
+      data = JSON.stringify({
+        accessToken: jwtToken,
+        clientCode,
+        userEmail,
+      });
+      url = `${server.ccxtServer.baseUrl}iifl/all-holdings`;
+      break;
 
     case 'ICICI Direct':
       if (!apiKey || !jwtToken || !secretKey) return null;
@@ -159,12 +165,24 @@ export const fetchBrokerAllHoldings = async (
       url = `${server.ccxtServer.baseUrl}motilal-oswal/holdings`;
       break;
 
+    case 'Axis Securities':
+      if (!jwtToken) return null;
+      data = JSON.stringify({
+        accessToken: jwtToken,
+        clientCode,
+        userEmail,
+      });
+      url = `${server.ccxtServer.baseUrl}axis/all-holdings`;
+      break;
+
     case 'Arihant Capital':
       // Parity with web AllHoldings.js § 134.
       if (!jwtToken) return null;
       data = JSON.stringify({
+        apiKey: checkValidApiAnSecret(apiKey),
         accessToken: jwtToken,
         userId: clientCode,
+        userEmail,
       });
       url = `${server.ccxtServer.baseUrl}arihant/all-holdings`;
       break;
@@ -176,6 +194,7 @@ export const fetchBrokerAllHoldings = async (
         apiSessionKey: jwtToken,
         accessToken: jwtToken,
         actid: clientCode,
+        userEmail,
       });
       url = `${server.ccxtServer.baseUrl}definedge/all-holdings`;
       break;
@@ -190,7 +209,10 @@ export const fetchBrokerAllHoldings = async (
       headers: {
         'Content-Type': 'application/json',
         'X-Advisor-Subdomain':
-          configData?.config?.REACT_APP_HEADER_NAME || configData?.subdomain,
+          configData?.config?.REACT_APP_HEADER_NAME ||
+          configData?.subdomain ||
+          Config.REACT_APP_HEADER_NAME ||
+          '',
         'aq-encrypted-key': generateToken(
           Config.REACT_APP_AQ_KEYS,
           Config.REACT_APP_AQ_SECRET,
@@ -198,7 +220,24 @@ export const fetchBrokerAllHoldings = async (
       },
     });
 
-    return response.data?.totalHoldings;
+    // A broker error (expired token etc.) comes back as status 1 WITH all-zero
+    // totals. Treating those as a real empty portfolio showed "No holdings in
+    // your Upstox account yet" for an account holding Rs 3.8 lakh (Kyzen,
+    // 2026-10-13). Report the failure instead of fake zeros.
+    if (Number(response.data?.status) === 1) {
+      return {
+        fetchFailed: true,
+        message: response.data?.message || 'Holdings could not be loaded',
+        // Server copy of the last good totals (ccxt 9db1684f), if any.
+        lastKnown: response.data?.lastKnown || null,
+      };
+    }
+    const totals = response.data?.totalHoldings;
+    if (!totals) return null;
+    return {
+      ...totals,
+      holding: Array.isArray(response.data?.holding) ? response.data.holding : [],
+    };
   } catch (error) {
     return null;
   }

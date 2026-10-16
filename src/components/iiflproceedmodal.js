@@ -15,12 +15,15 @@ import {XIcon, EyeOffIcon, EyeIcon} from 'lucide-react-native';
 import axios from 'axios';
 import Toast from 'react-native-toast-message';
 import {WebView} from 'react-native-webview';
+import {getAuth} from '@react-native-firebase/auth';
 import server from '../utils/serverConfig';
 import {generateToken} from '../utils/SecurityTokenManager';
 import Config from 'react-native-config';
 import {useTrade} from '../screens/TradeContext';
-import {getAdvisorSubdomain} from '../utils/variantHelper';
+import {getAdvisorSubdomain, getTenantSubdomain} from '../utils/variantHelper';
 import {getAccountEmail} from '../utils/accountEmail';
+
+import { designColor } from '../design/literalTokens';
 
 const {width: screenWidth, height: screenHeight} = Dimensions.get('window');
 const commonHeight = screenHeight * 0.06; // Common height
@@ -42,6 +45,8 @@ const IIFLProceedModal = ({
   const [broker, setBroker] = useState('IIFL Securities');
   const [showWebView, setShowWebView] = useState(false); // State to control WebView visibility
   const [isLoading, setIsLoading] = useState(false); // State for loading indicator
+  const auth = getAuth();
+  const user = auth.currentUser;
   const userEmail = getAccountEmail();
 
   useEffect(() => {
@@ -57,7 +62,7 @@ const IIFLProceedModal = ({
         {
           headers: {
             'Content-Type': 'application/json',
-            'X-Advisor-Subdomain': getAdvisorSubdomain(),
+            'X-Advisor-Subdomain': getTenantSubdomain(),
             'aq-encrypted-key': generateToken(
               Config.REACT_APP_AQ_KEYS,
               Config.REACT_APP_AQ_SECRET,
@@ -191,7 +196,7 @@ const styles = StyleSheet.create({
     margin: 0,
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: designColor('fff'),
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: screenWidth * 0.05,
@@ -208,7 +213,7 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 250,
     alignSelf: 'center',
-    backgroundColor: '#f1f4f8',
+    backgroundColor: designColor('f1f4f8'),
     marginBottom: 20,
   },
   scrollViewContent: {
@@ -242,7 +247,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   inputContainer: {
-    borderColor: '#d5d4d4',
+    borderColor: designColor('d5d4d4'),
     alignSelf: 'center',
     borderWidth: 1,
     borderRadius: 10,
@@ -252,12 +257,12 @@ const styles = StyleSheet.create({
   },
   input: {
     height: commonHeight,
-    borderColor: '#d5d4d4',
+    borderColor: designColor('d5d4d4'),
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 10,
     marginBottom: 20,
-    color: '#000101',
+    color: designColor('000101'),
     width: commonWidth,
   },
   proceedButton: {
