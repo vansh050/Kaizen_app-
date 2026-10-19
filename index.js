@@ -9,6 +9,10 @@ import {
   ensureTradeAlertChannel,
 } from './src/FunctionCall/services/TradeAlertChannel';
 import {syncTradeLiveActivity} from './src/services/TradeLiveActivity';
+import React from 'react';
+import codePush from '@revopush/react-native-code-push';
+import DeviceInfo from 'react-native-device-info';
+import {installExactTargetOta} from './src/utils/otaPolicy';
 
 let notificationDisplayed = false;
 
@@ -166,4 +170,43 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
 
 // Kaizen Alpha does not have a signed OTA deployment. Keep the bundled app entry
 // point until a tenant-specific deployment and signing key are provisioned.
-AppRegistry.registerComponent(appName, () => App);
+let otaCheckInFlight = null;
+
+const checkForExactTargetOta = () => {
+  if (otaCheckInFlight) return otaCheckInFlight;
+  otaCheckInFlight = installExactTargetOta({
+    codePush,
+    binaryVersion: DeviceInfo.getVersion(),
+  })
+    .catch(error => console.warn('[OTA] exact-target check failed:', error?.message || error))
+    .finally(() => {
+      otaCheckInFlight = null;
+    });
+  return otaCheckInFlight;
+};
+
+const ExactTargetOtaApp = () => {
+  React.useEffect(() => {
+    checkForExactTargetOta();
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') checkForExactTargetOta();
+    });
+    return () => subscription.remove();
+  }, []);
+  return <App />;
+};
+
+// Release binaries report OTA status through the CodePush HOC, but update
+// acquisition is manual and exact-version-only. An open-ended package such as
+// Production v93 (>=3.9.129) must never replace a newer APK's embedded bundle.
+// Downloads still activate only on the next clean restart, never mid-trade.
+// Debug remains attached to Metro and never checks OTA.
+const OtaEnabledApp = __DEV__
+  ? App
+  : codePush({
+      checkFrequency: codePush.CheckFrequency.MANUAL,
+      installMode: codePush.InstallMode.ON_NEXT_RESTART,
+      mandatoryInstallMode: codePush.InstallMode.ON_NEXT_RESTART,
+    })(ExactTargetOtaApp);
+
+AppRegistry.registerComponent(appName, () => OtaEnabledApp);

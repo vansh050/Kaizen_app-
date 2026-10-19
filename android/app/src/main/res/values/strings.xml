@@ -1,3 +1,12 @@
 <resources>
     <string name="app_name">Kaizen Alpha</string>
+    <string name="CodePushPublicKey">-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsYHumVCEgeLxsdfCfMHN
+lLFYYCgvXIfuu0pZkfrblG/6xDNk/1MpV2UuIMyl7Rzme4yxqZVkdarMABmR4DvO
+cvWVsg8rQkXwzKG2dLKRD0vPTW2E+UoYC6HKe4rjbyC9hLreWPJNqnLgW9cJov60
+LovRlkEK/XnKa0SkStza4niLfk7cjsThKFGkzgf2RM5caikx+OC5jzjl7fQU8nc8
+n3PRupdmA9/1K8EcylJyjw7HzOqCOkPk29ZiE6Lt0BVLHQaV5Jq6cTDKENjtmhdV
+Xkw0Ai15Rj4ZHlr6T/Mj9ntK2nxdmzE4SWsCMEM/IuiPMPcl4+POFsy3HG/Np2V1
+hwIDAQAB
+-----END PUBLIC KEY-----</string>
 </resources>

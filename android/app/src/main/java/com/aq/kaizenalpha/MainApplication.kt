@@ -13,7 +13,32 @@ import com.facebook.soloader.SoLoader
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.oblador.vectoricons.VectorIconsPackage;
 
+import com.microsoft.codepush.react.CodePush
+
 class MainApplication : Application(), ReactApplication {
+
+  private fun clearRetainedOtaAfterBinaryChange() {
+    if (BuildConfig.DEBUG) return
+
+    val preferences = getSharedPreferences("aq_native_bundle_baseline", MODE_PRIVATE)
+    val currentVersionCode = BuildConfig.VERSION_CODE.toLong()
+    val previousVersionCode = preferences.getLong("native_version_code", -1L)
+
+    // An in-place APK update preserves CodePush files. The old Production v93
+    // target was open-ended (>=3.9.129), so CodePush considered that older JS
+    // compatible with newer APKs and loaded it instead of the embedded bundle.
+    // Clear once per native-version transition before React resolves its JS
+    // bundle. Exact-target OTA checks in index.js may then install only an OTA
+    // built specifically for this binary version.
+    if (previousVersionCode != currentVersionCode) {
+      CodePush.getInstance(
+        getString(R.string.CodePushDeploymentKey),
+        applicationContext,
+        false,
+      ).clearUpdates()
+      preferences.edit().putLong("native_version_code", currentVersionCode).apply()
+    }
+  }
 
   override val reactNativeHost: ReactNativeHost =
       object : DefaultReactNativeHost(this) {
@@ -27,6 +52,13 @@ class MainApplication : Application(), ReactApplication {
 
         override fun getJSMainModuleName(): String = "index"
 
+        // Debug APKs load JavaScript from Metro and intentionally do not
+        // package index.android.bundle. CodePush owns the bundle path only in
+        // release builds, where the embedded fallback and signed OTA packages
+        // are available.
+        override fun getJSBundleFile(): String? =
+            if (BuildConfig.DEBUG) null else CodePush.getJSBundleFile()
+
         override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
 
         override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
@@ -38,6 +70,7 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    clearRetainedOtaAfterBinaryChange()
     SoLoader.init(this, OpenSourceMergedSoMapping)
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
       // If you opted-in for the New Architecture, we load the native entry point for this app.
