@@ -168,8 +168,6 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
   NatificationServiceNav.navigate('NotificationScreen');
 });
 
-// Kaizen Alpha does not have a signed OTA deployment. Keep the bundled app entry
-// point until a tenant-specific deployment and signing key are provisioned.
 let otaCheckInFlight = null;
 
 const checkForExactTargetOta = () => {
