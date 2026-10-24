@@ -68,7 +68,7 @@
     "@react-navigation/stack": "^7.1.2",
     "@supersami/rn-foreground-service": "^2.1.1",
     "accordion-collapse-react-native": "^1.1.1",
-    "axios": "^1.7.7",
+    "axios": "1.20.0",
     "base-64": "^1.0.0",
     "base64-js": "^1.5.1",
     "base64url": "^3.0.1",
@@ -144,7 +144,6 @@
     "react-native-webview": "^13.13.0",
     "react-native-youtube-iframe": "^2.3.0",
     "react-query": "^3.39.3",
-    "react-router-native": "^6.26.1",
     "rn-slide-button-updated": "^1.0.4",
     "rn-switch-button": "^1.1.0",
     "semver": "^7.7.3",
@@ -152,7 +151,8 @@
     "twrnc": "^4.6.1",
     "util": "^0.12.5",
     "zustand": "^5.0.4",
-    "@revopush/react-native-code-push": "2.6.0"
+    "@revopush/react-native-code-push": "2.6.0",
+    "lodash": "4.18.1"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
@@ -182,5 +182,9 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "overrides": {
+    "lodash": "$lodash",
+    "undici": "5.29.0"
   }
 }
